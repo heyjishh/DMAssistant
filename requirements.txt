@@ -1,5 +1,16 @@
-langchain-google-genai==0.0.11
-google-generativeai==0.4.0
-chromadb==0.4.22
-python-telegram-bot==21.0
-pillow==10.2.0
+# Core AI/LLM packages
+langchain-google-genai>=0.1.0
+langchain-core>=0.1.0
+google-generativeai>=0.3.0
+
+# Telegram bot
+python-telegram-bot>=20.0
+
+# Image processing
+pillow>=10.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# Standard library (included in Python, listed for reference)
+# random, json, os, time, base64, asyncio, typing
