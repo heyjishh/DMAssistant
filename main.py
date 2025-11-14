@@ -1219,7 +1219,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     bio_full = extract.get('bio', 'No bio')
                     content_type_full = content_type
                     
-                    prompt_text = f"""Delhi guy DMing girl on Instagram. Generate 5 opening lines - each with BOTH English and Hinglish versions, tuned to Delhi Gen-Z vibe (playful, teasy, confident, abundance mindset).
+                    prompt_text = f"""Delhi guy DMing girl on Instagram. Generate 10 opening lines - each with BOTH English and Hinglish versions, tuned to Delhi Gen-Z vibe (playful, teasy, confident, abundance mindset).
 
 HER PROFILE:
 Bio: {bio_full}
@@ -1227,7 +1227,7 @@ Grid Photos: {grid_full}
 Content Type: {content_type_full}
 Followers: {extract.get('followers', 'unknown')}
 
-Generate 5 opening lines based on KB principles: Present-focused (immediate bio/grid detail), specific/observant (reference exact element), light/curious (open-ended question, no impressing), non-physical compliment if fitting (humor/energy/skill). For reels: Play-along/duet vibe; infeed: Hot take/tip; standard: Relatable chaos/game.
+Generate 10 opening lines based on KB principles: Present-focused (immediate bio/grid detail), specific/observant (reference exact element), light/curious (open-ended question, no impressing), non-physical compliment if fitting (humor/energy/skill). For reels: Play-along/duet vibe; infeed: Hot take/tip; standard: Relatable chaos/game.
 
 For EACH line, provide:
 - English version (natural, under 15 words)
@@ -1238,17 +1238,17 @@ Format EXACTLY like this:
    Hinglish: [hinglish text]
 2. English: [english text]
    Hinglish: [hinglish text]
-(continue for 5 lines; no extras)
+(continue for 10 lines; no extras)
 
-RULES (from KB/Quora/Reddit):
-- Under 15 words each; punchy, active voice.
+RULES (from KB/Quora/Reddit/youtube):
+- Under 15 words each; teasy, punchy, active voice.
 - Reference SPECIFIC profile/content (e.g., bio keyword, grid theme).
 - Feminine grammar mandatory (kar rhi ho, jaa rhi ho, bna leti ho; NO masculine raha/rahe/leta).
 - Natural Delhi style: Mix shortcuts (kkhy, haan yaar, sahi, dude); 1-2 emojis max (👀, 😏).
 - High-value: Playful tease/reciprocal share, open-ended (why/how/fave?); no generic/creepy.
-- Variety: 1 bio-hook, 1 grid-specific, 1 content-type tailored, 1 game/POV, 1 relatable chaos.
+- Variety: bio-hooks, grid-specific, content-type tailored, games/POVs, relatable chaos, playful teases.
 
-RESPOND WITH ONLY THE 10 LINES (5 English + 5 Hinglish):"""
+RESPOND WITH ONLY THE 20 LINES (10 English + 10 Hinglish):"""
                     
                     # Use proper messages for invoke
                     messages = [
@@ -1284,47 +1284,42 @@ RESPOND WITH ONLY THE 10 LINES (5 English + 5 Hinglish):"""
                             opening_lines.append({'english': current_english, 'hinglish': text})
                             current_english = None
                     
-                    # Ensure we have at least 3 pairs
-                    while len(opening_lines) < 3:
-                        if len(opening_lines) == 0:
-                            opening_lines.append({
-                                'english': f"Hey! Your {content_type_full} content is fire. What's the story?",
-                                'hinglish': f"Yo! Tera {content_type_full} content ekdum jhakaas. Kya scene hai?"
-                            })
-                            opening_lines.append("----------------------------------")
-                        elif len(opening_lines) == 1:
-                            opening_lines.append({
-                                'english': f"Your {grid_full[:30]} caught my eye. Tell me more?",
-                                'hinglish': f"Arre, tera {grid_full[:30]} dekha. Batao na?"
-                            })
-                            opening_lines.append("----------------------------------")
-                        else:
-                            opening_lines.append({
-                                'english': "Let's chat. What are you up to?",
-                                'hinglish': "Chal baat karte hain. Kya kar rhi ho?"
-                            })
-                            opening_lines.append("----------------------------------")
+                    # Ensure we have at least 10 pairs
+                    default_lines = [
+                        {'english': f"Hey! Your {content_type_full} content is fire. What's the story?", 'hinglish': f"Yo! Tera {content_type_full} content ekdum jhakaas. Kya scene hai?"},
+                        {'english': f"Your {grid_full[:30]} caught my eye. Tell me more?", 'hinglish': f"Arre, tera {grid_full[:30]} dekha. Batao na?"},
+                        {'english': "Let's chat. What are you up to?", 'hinglish': "Chal baat karte hain. Kya kar rhi ho?"},
+                        {'english': "Your vibe is different. What's your secret?", 'hinglish': "Tera vibe alag hai. Secret kya hai?"},
+                        {'english': "That bio is bold. Story behind it?", 'hinglish': "Bio ekdum bold hai. Story kya hai?"},
+                        {'english': "Your posts have energy. How do you pick what to share?", 'hinglish': "Teri posts mein energy hai. Kaise decide karti ho kya share karna?"},
+                        {'english': "Interesting content. What inspires you?", 'hinglish': "Interesting content hai. Kya inspire karta hai?"},
+                        {'english': "Your style is unique. How'd you develop it?", 'hinglish': "Tera style unique hai. Kaise develop kiya?"},
+                        {'english': "That content is solid. What's next?", 'hinglish': "Content solid hai. Aage kya plan?"},
+                        {'english': "Let's be real. What's your story?", 'hinglish': "Chal real baat karte hain. Teri story kya hai?"}
+                    ]
+                    while len(opening_lines) < 10:
+                        opening_lines.append(default_lines[len(opening_lines)])
                         
                 except Exception as e:
                     print(f"⚠️ Opening line generation error: {e}")
-                    # Fallback tailored with English/Hinglish pairs
+                    # Fallback tailored with English/Hinglish pairs (10 lines)
                     if content_type == "reel":
                         opening_lines = [
                             {'english': "This reel is fire. What's the backstory?", 'hinglish': "Yo! Yeh reel ekdum jhakaas. Backstory kya hai? 👀"},
                             {'english': "Duet vibes on this. Your take?", 'hinglish': "Arre, duet vibes aa rhe. Tera take kya hai?"},
-                            {'english': "FYP gold right here. Remix?", 'hinglish': "Bhai FYP pe aana chahiye. Remix karegi?"}
+                            {'english': "FYP gold right here. Remix?", 'hinglish': "Bhai FYP pe aana chahiye. Remix karegi?"},
+                            {'english': "This reel slaps. How'd you come up with it?", 'hinglish': "Yeh reel ekdum solid. Kaise socha?"},
+                            {'english': "Reel energy is different. What inspired this?", 'hinglish': "Reel ki energy alag hai. Kya inspire kiya?"},
+                            {'english': "That transition though. Tutorial?", 'hinglish': "Arre woh transition! Tutorial degi?"},
+                            {'english': "Reel game strong. What's your secret?", 'hinglish': "Reel game ekdum strong. Secret kya hai?"},
+                            {'english': "This deserves more views. What's next?", 'hinglish': "Isko zyada views milne chahiye. Aage kya?"},
+                            {'english': "Reel vibes hit different. Your fave part?", 'hinglish': "Reel vibes alag hain. Tera fave part?"},
+                            {'english': "That audio choice. Why this one?", 'hinglish': "Woudio choice. Kyun yeh wala?"}
                         ]
                     elif content_type == "infeed":
                         opening_lines = [
-                            {'english': f"This post caught my eye. Hot take?", 'hinglish': f"Yo! Yeh post dekha. Hot take kya hai?"},
-                            {'english': f"That content is solid. Any tips?", 'hinglish': f"Arre, yeh content solid hai. Koi tip hai?"},
-                            {'english': "Post is interesting. Why this one?", 'hinglish': "Yeh post interesting hai. Kyun yeh wala?"}
-                        ]
-                    else:
-                        opening_lines = [
-                            {'english': f"Your profile is clean. What's up?", 'hinglish': f"Yo! Tera profile ekdum clean. Kya scene hai?"},
-                            {'english': f"Your content is fire. What's the story?", 'hinglish': f"Arre, tera content fire hai. Story kya hai?"},
-                            {'english': "Profile caught my eye. Let's chat?", 'hinglish': "Tera profile dekha. Chal baat karte hain?"}
+                            {'english': "This posttent is fire. . Hot take?", 'hinglish': "Yo! Yeh post dekha. Hot take kya hai?"},
+                            {'english': "That content is solid. Any tips?", ' 'hinglish': "Tera profile dekha. Chal baat karte hain?"}
                         ]
             else:
                 # Fallback
