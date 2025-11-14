@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-DM Coach Bot - Fixed & Production Ready
-Delhi Gen-Z Instagram DM Analysis Bot with Auto-Reply Feature
-Updated with Gemini API Best Practices: Correct API key env var, model names (gemini-1.5-flash), response_mime_type for JSON, max_retries/timeout, multimodal vision model, structured output via with_structured_output where applicable.
-"""
-
 import random
 import json
 import os
@@ -351,6 +345,19 @@ try:
 except Exception as e:
     print(f"❌ LLM init failed: {e}")
     llm = None
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def escape_markdown_v2(text: str) -> str:
+    """Escape special characters for Telegram MarkdownV2"""
+    # Characters that need escaping in MarkdownV2 (according to Telegram docs)
+    # Note: @ should NOT be escaped
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
 
 # ============================================================================
 # CHROMADB SEEDING & HELPERS
@@ -1198,16 +1205,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             grid = extract.get('grid_desc', 'Standard')[:60]
             content_type = extract.get('content_type', 'standard')
             
-            # Escape special characters for MarkdownV2
-            handle = extract.get('handle', '@unknown').replace('_', '\\_').replace('.', '\\.')
-            bio_escaped = bio.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
-            grid_escaped = grid.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
-            
+            # Build profile text (use code blocks for ALL content with special chars)
             txt = ["👤 *Profile Analysis*\n"]
-            txt.append(f"*{handle}*")
-            txt.append(f"Bio: {bio_escaped}\\.\\.\\.")
+            txt.append(f"`{extract.get('handle', '@unknown')}`")  # Handle in code block
+            txt.append(f"Bio: `{bio[:80]}`")  # Use code block for bio
             txt.append(f"Followers: {extract.get('followers', '?')} \\| Posts: {extract.get('posts', '?')}")
-            txt.append(f"Grid: {grid_escaped}\\.\\.\\.")
+            txt.append(f"Grid: `{grid[:80]}`")  # Use code block for grid
             txt.append(f"Content: {content_type.upper()} vibe\n")
             
             # Generate customized opening lines with LLM (enhanced prompt)
@@ -1318,20 +1321,48 @@ RESPOND WITH ONLY THE 20 LINES (10 English + 10 Hinglish):"""
                         ]
                     elif content_type == "infeed":
                         opening_lines = [
-                            {'english': "This posttent is fire. . Hot take?", 'hinglish': "Yo! Yeh post dekha. Hot take kya hai?"},
-                            {'english': "That content is solid. Any tips?", ' 'hinglish': "Tera profile dekha. Chal baat karte hain?"}
+                            {'english': "This post caught my eye. Hot take?", 'hinglish': "Yo! Yeh post dekha. Hot take kya hai?"},
+                            {'english': "That content is solid. Any tips?", 'hinglish': "Arre, yeh content solid hai. Koi tip hai?"},
+                            {'english': "Post is interesting. Why this one?", 'hinglish': "Yeh post interesting hai. Kyun yeh wala?"},
+                            {'english': "Your caption game is strong. How do you write them?", 'hinglish': "Tera caption game strong hai. Kaise likhti ho?"},
+                            {'english': "That aesthetic though. What's your process?", 'hinglish': "Woh aesthetic! Tera process kya hai?"},
+                            {'english': "Post vibes are different. What inspired this?", 'hinglish': "Post vibes alag hain. Kya inspire kiya?"},
+                            {'english': "Your feed is curated. How do you plan it?", 'hinglish': "Teri feed curated hai. Kaise plan karti ho?"},
+                            {'english': "That shot is clean. Photography tips?", 'hinglish': "Woh shot clean hai. Photography tips?"},
+                            {'english': "Post energy is unique. What's the story?", 'hinglish': "Post ki energy unique hai. Story kya hai?"},
+                            {'english': "Your content stands out. What's your approach?", 'hinglish': "Tera content stand out karta hai. Approach kya hai?"}
+                        ]
+                    else:
+                        opening_lines = [
+                            {'english': "Your profile is clean. What's up?", 'hinglish': "Yo! Tera profile ekdum clean. Kya scene hai?"},
+                            {'english': "Your content is fire. What's the story?", 'hinglish': "Arre, tera content fire hai. Story kya hai?"},
+                            {'english': "Profile caught my eye. Let's chat?", 'hinglish': "Tera profile dekha. Chal baat karte hain?"},
+                            {'english': "Your vibe is different. What's your secret?", 'hinglish': "Tera vibe alag hai. Secret kya hai?"},
+                            {'english': "That bio is bold. Story behind it?", 'hinglish': "Bio ekdum bold hai. Story kya hai?"},
+                            {'english': "Your posts have energy. How do you pick?", 'hinglish': "Teri posts mein energy hai. Kaise pick karti ho?"},
+                            {'english': "Interesting content. What inspires you?", 'hinglish': "Interesting content hai. Kya inspire karta hai?"},
+                            {'english': "Your style is unique. How'd you develop it?", 'hinglish': "Tera style unique hai. Kaise develop kiya?"},
+                            {'english': "Content is solid. What's next?", 'hinglish': "Content solid hai. Aage kya plan?"},
+                            {'english': "Let's be real. What's your story?", 'hinglish': "Chal real baat karte hain. Teri story kya hai?"}
                         ]
             else:
-                # Fallback
+                # Fallback (10 pairs)
                 opening_lines = [
                     {'english': "Your profile is clean. What are you up to?", 'hinglish': "Yo! Tera profile clean hai. Kya kar rhi ho?"},
                     {'english': "Your content is solid. What's up?", 'hinglish': "Arre, tera content solid hai. Kya scene?"},
-                    {'english': "Let's talk. What's the vibe?", 'hinglish': "Chal baat karte hain. Kya vibe hai?"}
+                    {'english': "Let's talk. What's the vibe?", 'hinglish': "Chal baat karte hain. Kya vibe hai?"},
+                    {'english': "Your style is different. What's your secret?", 'hinglish': "Tera style alag hai. Secret kya hai?"},
+                    {'english': "That bio caught my eye. Story?", 'hinglish': "Bio dekha. Story kya hai?"},
+                    {'english': "Your posts are interesting. What inspires you?", 'hinglish': "Teri posts interesting hain. Kya inspire karta?"},
+                    {'english': "Content game is strong. How do you do it?", 'hinglish': "Content game strong hai. Kaise karti ho?"},
+                    {'english': "Your vibe is unique. Tell me more?", 'hinglish': "Tera vibe unique hai. Batao na?"},
+                    {'english': "Profile is fire. What's next?", 'hinglish': "Profile fire hai. Aage kya?"},
+                    {'english': "Let's chat. What's your story?", 'hinglish': "Chal baat karte hain. Teri story?"}
                 ]
             
-            # Add opening lines to main message (show all, with English + Hinglish)
+            # Add opening lines to main message (show all 10, with English + Hinglish)
             txt.append("\n💬 *Opening Lines:*")
-            for i, line_pair in enumerate(opening_lines[:5], 1):  # Show up to 5 pairs
+            for i, line_pair in enumerate(opening_lines[:10], 1):  # Show up to 10 pairs
                 txt.append(f"{i}\\. English: `{line_pair['english']}`")
                 txt.append(f"{i}\\.1 Hinglish: `{line_pair['hinglish']}`")
             
@@ -1350,23 +1381,70 @@ RESPOND WITH ONLY THE 20 LINES (10 English + 10 Hinglish):"""
             
             txt.append("\n_Tap any line to select and copy\\!_ 👑")
             
-            # Send everything in ONE message with MarkdownV2
+            # Build with MarkdownV2 - bio/grid as plain text, replies in backticks
+            md_txt = ["👤 *Profile Analysis*\n"]
+            
+            # Handle, Bio, Grid, Followers, Posts - ALL need escaping
+            handle_escaped = escape_markdown_v2(extract.get('handle', '@unknown'))
+            bio_escaped = escape_markdown_v2(bio[:80])
+            grid_escaped = escape_markdown_v2(grid[:80])
+            followers_escaped = escape_markdown_v2(str(extract.get('followers', '?')))
+            posts_escaped = escape_markdown_v2(str(extract.get('posts', '?')))
+            
+            md_txt.append(f"*{handle_escaped}*")
+            md_txt.append(f"Bio: {bio_escaped}")
+            md_txt.append(f"Followers: {followers_escaped} \\| Posts: {posts_escaped}")
+            md_txt.append(f"Grid: {grid_escaped}")
+            md_txt.append(f"Content: {content_type.upper()} vibe\n")
+            
+            # Opening lines in backticks (selectable)
+            md_txt.append("\n💬 *Opening Lines:*")
+            for i, line_pair in enumerate(opening_lines[:10], 1):
+                md_txt.append(f"{i}\\. English: `{line_pair['english']}`")
+                md_txt.append(f"{i}\\.1 Hinglish: `{line_pair['hinglish']}`")
+            
+            # Voice notes in backticks (selectable)
+            md_txt.append("\n🎤 *Voice Note Scripts:*")
+            for i, vn in enumerate(package["voice_notes"][:3], 1):
+                md_txt.append(f"{i}\\. `{vn['script']}`")
+            
+            # Reel comments in backticks (selectable)
+            md_txt.append("\n📱 *Reel/In\\-Feed Comments:*")
+            for i, rc in enumerate(package["reel_comments"][:3], 1):
+                md_txt.append(f"{i}\\. `{rc}`")
+            
+            md_txt.append("\n_Tap any line to select and copy\\!_ 👑")
+            
             try:
                 await update.message.reply_text(
-                    "\n".join(txt),
+                    "\n".join(md_txt),
                     parse_mode='MarkdownV2'
                 )
             except telegram.error.TimedOut:
                 await update.message.reply_text("⚠️ Network slow. Retry screenshot.")
                 return
             except Exception as e:
-                # Fallback without markdown if formatting fails
+                # Fallback to plain text if markdown fails
                 print(f"Markdown error: {e}")
-                try:
-                    await update.message.reply_text("\n".join(txt))
-                except:
-                    await update.message.reply_text("⚠️ Network slow. Retry screenshot.")
-                    return
+                plain_txt = ["👤 Profile Analysis\n"]
+                plain_txt.append(f"{extract.get('handle', '@unknown')}")
+                plain_txt.append(f"Bio: {bio[:80]}")
+                plain_txt.append(f"Followers: {extract.get('followers', '?')} | Posts: {extract.get('posts', '?')}")
+                plain_txt.append(f"Grid: {grid[:80]}")
+                plain_txt.append(f"Content: {content_type.upper()} vibe\n")
+                plain_txt.append("\n💬 Opening Lines:")
+                for i, line_pair in enumerate(opening_lines[:10], 1):
+                    plain_txt.append(f"{i}. English: `{line_pair['english']}`")
+                    plain_txt.append(f"{i}.1 Hinglish: `{line_pair['hinglish']}`")
+                plain_txt.append("\n🎤 Voice Note Scripts:")
+                for i, vn in enumerate(package["voice_notes"][:3], 1):
+                    plain_txt.append(f"{i}. `{vn['script']}`")
+                plain_txt.append("\n📱 Reel/In-Feed Comments:")
+                for i, rc in enumerate(package["reel_comments"][:3], 1):
+                    plain_txt.append(f"{i}. `{rc}`")
+                plain_txt.append("\nTap any line to select and copy! 👑")
+                await update.message.reply_text("\n".join(plain_txt))
+                return
             
             # Only More button
             kb = InlineKeyboardMarkup([
@@ -1457,36 +1535,36 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "girl": girl
         }
         
-        # Build response with MarkdownV2 escaping
+        # Build response with MarkdownV2
         txt = ["🔥 *DM Coach Report*\n"]
-        # Escape special characters for MarkdownV2
-        escaped_text = text.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
-        txt.append(f"💬 *Her:* \"{escaped_text}\"\n")
+        
+        # Her message as plain text (escaped)
+        escaped_text = escape_markdown_v2(text)
+        txt.append(f"💬 *Her:* {escaped_text}\n")
         
         # Check for quota error
         if cot.get("quota_error"):
             txt.append("⚠️ *API Quota Exceeded* \\- Using smart fallback replies\n")
         
-        # Analysis (enhanced)
+        # Analysis (enhanced) - plain text (escaped)
         analysis = cot.get('a', 'Keep it high-value.')
         if warn:
             analysis += f"\n{warn}"
-        # Escape analysis text
-        escaped_analysis = analysis.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+        escaped_analysis = escape_markdown_v2(analysis)
         txt.append(f"🧠 *Play:* {escaped_analysis}\n")
         
-        # Add replies to main message
+        # Add replies to main message - in backticks (selectable)
         txt.append("\n📱 *Your Drip:*")
         replies = cot.get('r', [])
         for i, r in enumerate(replies, 1):
             vibe = r.get('sub_vibe', 'unknown').title()
             txt.append(f"{i}\\. \\[{vibe}\\] `{r['text']}`")
         
-        # Add KB Sources if available
+        # Add KB Sources if available - plain text (escaped)
         if "sources" in cot and cot["sources"]:
             txt.append("\n📚 *KB Sources:*")
             for s in cot["sources"][:2]:
-                escaped_quote = s['quote'][:80].replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+                escaped_quote = escape_markdown_v2(s['quote'][:80])
                 txt.append(f"• {s['key'].title()}: {escaped_quote}\\.\\.\\.")
         
         txt.append("\n_Tap any reply above to select and copy\\!_ 👑")
@@ -1498,12 +1576,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='MarkdownV2'
             )
         except Exception as e:
-            # Fallback without markdown if formatting fails
+            # Fallback to plain text if markdown fails
             print(f"Markdown error: {e}")
-            try:
-                await update.message.reply_text("\n".join(txt))
-            except:
-                pass
+            plain_txt = ["🔥 DM Coach Report\n"]
+            plain_txt.append(f"💬 Her: {text}\n")
+            if cot.get("quota_error"):
+                plain_txt.append("⚠️ API Quota Exceeded - Using smart fallback replies\n")
+            plain_txt.append(f"🧠 Play: {analysis}\n")
+            plain_txt.append("\n📱 Your Drip:")
+            for i, r in enumerate(replies, 1):
+                vibe = r.get('sub_vibe', 'unknown').title()
+                plain_txt.append(f"{i}. [{vibe}] `{r['text']}`")
+            if "sources" in cot and cot["sources"]:
+                plain_txt.append("\n📚 KB Sources:")
+                for s in cot["sources"][:2]:
+                    plain_txt.append(f"• {s['key'].title()}: {s['quote'][:80]}...")
+            plain_txt.append("\nTap any reply above to select and copy! 👑")
+            await update.message.reply_text("\n".join(plain_txt))
         
         # Only More button
         kb = InlineKeyboardMarkup([
