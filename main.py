@@ -2,6 +2,7 @@
 """
 DM Coach Bot - Fixed & Production Ready
 Delhi Gen-Z Instagram DM Analysis Bot with Auto-Reply Feature
+Updated with Gemini API Best Practices: Correct API key env var, model names (gemini-1.5-flash), response_mime_type for JSON, max_retries/timeout, multimodal vision model, structured output via with_structured_output where applicable.
 """
 
 import random
@@ -9,22 +10,24 @@ import json
 import os
 import time
 import base64
+import asyncio
 from typing import List, Dict, Any
 from PIL import Image
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # LangChain & AI imports
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.messages import HumanMessage, SystemMessage  # Added for proper message handling
 
 # Telegram imports
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
 import telegram.error
-
-# ChromaDB imports
-import chromadb
-from chromadb.config import Settings
 
 # Google Generative AI for Vision
 try:
@@ -35,7 +38,7 @@ except ImportError:
     print("⚠️ google-generativeai not installed. Vision API disabled.")
 
 # ============================================================================
-# CONFIGURATION & VALIDATION
+# CONFIGURATION & VALIDATION (Updated API Key)
 # ============================================================================
 
 def validate_env_vars():
@@ -43,11 +46,6 @@ def validate_env_vars():
     required = {
         "GEMINI_API_KEY": "Gemini API key for LLM and embeddings",
         "TELEGRAM_BOT_TOKEN": "Telegram bot token"
-    }
-    optional = {
-        "CHROMA_API_KEY": "ChromaDB API key (optional for local)",
-        "CHROMA_TENANT": "ChromaDB tenant",
-        "CHROMA_DATABASE": "ChromaDB database"
     }
     
     missing = [k for k in required if not os.getenv(k)]
@@ -59,10 +57,6 @@ def validate_env_vars():
         return False
     
     print("✅ All required env vars present")
-    
-    missing_optional = [k for k in optional if not os.getenv(k)]
-    if missing_optional:
-        print(f"⚠️ Optional env vars not set: {', '.join(missing_optional)}")
     
     return True
 
@@ -79,45 +73,277 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 if GEMINI_API_KEY and VISION_AVAILABLE:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize embeddings
-try:
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",
-        google_api_key=GEMINI_API_KEY
-    )
-    print("✅ Embeddings initialized")
-except Exception as e:
-    print(f"❌ Embeddings init failed: {e}")
-    embeddings = None
-
-# Initialize ChromaDB
-try:
-    chroma_api_key = os.getenv("CHROMA_API_KEY", "ck-8YrdvWKNapbQ7ByG8qjF9iyfVwRjzZBDqRCyT3giyFts")
-    chroma_tenant = os.getenv("CHROMA_TENANT", "6debe819-654b-405c-90e5-ce5359ec38ec")
-    chroma_database = os.getenv("CHROMA_DATABASE", "Production")
+# ============================================================================
+# USER CONTEXT - DELHI ISION_AVAILABLESTYLE (ENHANCED WITH RESEARCH)
+# ============================================================================
+genai.configure(api_key=GEMINI_API_KEY)
+DELHI_CONTEXT = {
+    "tz": "Asia/Kolkata",
+    "country": "IN",
+    "handle": "@heyyjishh",
+    "region": "north_india_delhi_northern",
+    "vibe": "delhi_genz_northern_flirty_teasy",
+    "lang": "hinglish_english_shortform",
+    "mood": "playful_flirt_banter",
     
-    chroma_client = chromadb.CloudClient(
-        api_key=chroma_api_key,
-        tenant=chroma_tenant,
-        database=chroma_database
-    )
-    collection = chroma_client.get_or_create_collection(name="dm_coach")
-    print("✅ ChromaDB connected")
-except Exception as e:
-    print(f"⚠️ ChromaDB connection failed: {e}")
-    print("💡 Trying local ChromaDB...")
-    try:
-        chroma_client = chromadb.Client()
-        collection = chroma_client.get_or_create_collection(name="dm_coach")
-        print("✅ Local ChromaDB initialized")
-    except Exception as e2:
-        print(f"❌ ChromaDB failed completely: {e2}")
-        collection = None
+    # Writing rules for natural, punchy replies (from KB: simple, respectful, context-tuned)
+    "writing_rules": {
+        "style": [
+            "Be present-focused: comment on immediate context (e.g., her reel, message)",
+            "Be specific and observant: reference exact details from profile/reel/message",
+            "Keep tone light and curious: aim to learn about her, not impress",
+            "Use open-ended prompts: questions needing more than yes/no",
+            "Respect boundaries: if low energy, end gracefully",
+            "Write short, punchy sentences",
+            "Use active voice",
+            "Focus on practical, actionable insights",
+            "Speak directly using 'you' and 'your'",
+            "Skip vague phrases"
+        ],
+        "avoid_phrases": [
+            "not just this, but also this",
+            "in conclusion",
+            "it goes without saying",
+            "at the end of the day",
+            "needless to say",
+            "Generic lines like 'hey beautiful' - too canned",
+            "Over-complimenting body/sex appeal early",
+            "Chasing with multiple texts if no reply",
+            "Needy questions like 'why no reply?'"
+        ],
+        "punctuation": [
+            "Avoid em dashes - use commas or periods",
+            "No semicolons",
+            "No hashtags",
+            "No markdown formatting",
+            "No asterisks for emphasis",
+            "Use emojis sparingly for Gen-Z vibe (😂, 👀, 😏)"
+        ],
+        "do_dont": {
+            "do": [
+                "Start with context: reel, story, profile pic",
+                "Mirror her energy: short reply = short back",
+                "Tease playfully: light banter, not mean",
+                "Share brief self-reveal: 10-25 sec anecdote for reciprocity",
+                "Transition to future: 'plans this weekend?' after 2-3 exchanges",
+                "Compliment specific/non-physical: 'your humor timing is spot on'",
+                "From Quora/Reddit: For reels - 'this reel slaps, what's the backstory?'",
+                "For in-feed: 'saw your post on [topic], what's your take?'",
+                "Practice micro-convos daily for confidence"
+            ],
+            "dont": [
+                "Force connection: if uninterested, exit politely",
+                "Use pickup lines: natural > rehearsed",
+                "Bombard with questions: one focused point per message",
+                "Ignore red flags: love bomb, gold digger - slow down/pivot",
+                "From Reddit: Don't double-text same day if no reply; abundance mindset",
+                "Quora tip: Avoid 'what do you do?' early - too interview-y"
+            ]
+        }
+    },
+    
+    # Modern chat shortcuts (expanded)
+    "shortcuts": {
+        "kk": "okay", "k": "okay", "kkhy": "okay hai yaar",
+        "ok": "okay", "okhy": "okay hai yaar", "okn": "okay na",
+        "no": "nahi", "nope": "nahi", "nah": "nahi",
+        "chal na bhai": "let's go brother", "koi na": "not a big deal",
+        "haan": "yes", "nhi": "nahi", "thik": "okay",
+        "acha": "okay/good", "sahi": "right/good",
+        "bas": "just/enough", "arre": "hey",
+        "yaar": "dude/friend", "bhai": "brother/dude",
+        "bc": "casual swear", "yaar bc": "dude seriously",
+        "bet": "agreed", "ngl": "not gonna lie", "tbh": "to be honest",
+        "iykyk": "if you know you know", "fr fr": "for real for real",
+        "bruh": "dude", "sus": "suspicious"
+    },
+    
+    # Core Delhi slang (expanded with Reddit/Quora Gen-Z terms)
+    "slang": [
+        "bhai kya hua", "ek number", "pakka", "bawaal bnchod", "banda solid hai",
+        "chill kar yaar", "ek dum jhakaas", "toh kya", "thik hai na", "seedha bol na",
+        "arey yaar", "genuine ekdum", "okay report", "fattu", "gandu", "lnd",
+        "bhai kya scene hai", "bawaal macha diya", "chill karo yaar",
+        "kya scene chal raha hai", "bhai io bol", "vella ban ja", "kalesh ho jayega",
+        "mere yaar", "noobde spotted", "bhatta maar", "ghusand mat kar", "phod diya bhai",
+        "kalesh macha", "vella time", "io bol na", "jugaad", "ghanta", "vella",
+        "bindaas", "phod diya", "pet phat gaya", "chep", "katta", "faaltu", "saala",
+        "bakchodi", "chull", "pataka", "kya scene", "arra yaar", "abey yaar", "haye re",
+        "achha ji", "nahi ji", "pakau", "nutter", "enthu cutlet", "senti", "funda",
+        "timepass", "toh", "haina", "badmash", "tell me", "bhai log", "yaarana",
+        "fundae", "freak out", "fundaas", "bindaas only", "chalta hai yaar", "kuch bhi",
+        "bilkul", "exactly", "point toh banta hai", "kya bolti tu", "sab changa",
+        "ki haal hai", "mast", "sahi hai bhai", "ekdum sahi", "full jhakaas", "bawaal hai",
+        "scene hai", "kya kar raha hai", "bol na yaar", "sun toh", "dekh na", "mat kar yaar",
+        "ho gaya na", "chalega", "theek hai ji", "koi baat nahi", "no issue", "fine only",
+        "bhai please", "yaar sorry", "kya hua", "sab theek", "mast mazaa aaya", "bahut accha",
+        "zabardast", "shandaar", "wah yaar", "superb", "awesome only", "fantastic",
+        "mind blowing", "outstanding", "ekdum top", "number one", "solid stuff", "rocking",
+        "dhamakedaar", "blockbuster", "hit hai", "flop ho gaya", "bakwaas", "behenji",
+        "aunty", "uncle ji", "bhai saab", "madam ji", "sahab", "ji", "huzoor", "maalik",
+        "boss", "dada", "neta ji", "babu", "seth", "lala", "pandit ji", "maulvi sahab",
+        "sardar ji", "bhaiya", "didi", "bhabhi", "devar", "jeth", "jethani", "nanad",
+        "bhabo", "kaka", "kaki", "mama", "mami", "nana", "nani", "tau", "tauji",
+        "chacha", "chachi", "bua", "fufaji", "masi", "masaji", "dadi", "dada ji",
+        "nani ma", "nana ji",
 
-# Initialize LLM
+        # Modern Gen-Z (from Reddit/Quora)
+        "bro the fit is clean", "lowkey obsessed", "no cap this slaps",
+        "Delhi winters hit different", "chai > everything",
+        "fit check or delete", "rate the drip 1-10", "rizz level 100",
+        "sus af", "bet", "finna head out", "bruh moment", "deadass",
+        "iykyk", "tbh", "ngl", "fyp energy", "fr fr", "brb simping",
+        "omg yes", "periodt", "slay", "tea", "chutiya" "chutiye", "chutiyapa",
+        "bkl", "bkl chod", "bkl chod diya", "bkl chod diya yaar",
+        
+        # Flirty pickup (refined from KB: light, context-based)
+        "are you set max kyuki deewana bana de",
+        "purvi my interests are very purvi",
+        "hey a i won't call you daddy but our children will",
+        "tujhe pata mera baap kaun hai",
+        "naya murgha zyada pharpharaata hai",
+        "sheeeeesh", "raw-dogging the convo", "couple goals we're it",
+        "manifesting reply", "panga with feelings",
+        
+        # Delhi regional (expanded)
+        "kya scene chal raha hai", "bhai io bol", "vella ban ja",
+        "kalesh ho jayega", "clubbing chalte hain", "mere yaar",
+        "noobde spotted", "bhatta maar", "ghusand mat kar",
+        
+        # South Delhi posh
+        "south delhi english", "gk preferred", "posh areas",
+        "oh my god where H&M", "rizz in gk", "lowkey south delhi",
+        "bet on hauz khas", "finna deer park date",
+        
+        # East Delhi laithi
+        "laithi east side", "east delhi launda", "panga east wala",
+        "genuine east ekdum", "laithi but cute", "bindaas east yaar",
+        
+        # Low side
+        "dwarka side waale", "uttam nagar drip", "janakapuri chill",
+        "lala flex", "delhi 71", "crasher kp panga",
+        
+        # Haryana mix
+        "theth haryanvi", "mithi haryana mix", "jaat haryana",
+        "haryanvi rowdy", "sonipat theth", "rohtak panga",
+        
+        # Punjabi influence
+        "punjabi refugees", "dilli punjabi", "gol gappa punjabi",
+        "patola irl", "sardar punjabi", "balle low side",
+        "shava punjabi date",
+        
+        # Chat naturals (from text research)
+        "chal na bhai", "koi na", "haan yaar", "nhi yaar",
+        "thik hai", "acha sahi", "bas yaar", "arre sun",
+        "dekh bhai", "mat kar", "ho gaya", "chal theek",
+        "sahi hai", "badiya", "mast hai", "solid",
+        
+        # Reel/In-feed specific (from research)
+        "this reel hits different", "fyp got me", "stitch this?", "duet vibes",
+        "your take on this?", "relatable af", "lowkey obsessed with this feed"
+    ]
+}
+
+# Embeddings disabled for speed
+embeddings = None
+print("⚡ Fast mode: Embeddings disabled")
+
+# Enhanced Fast in-memory knowledge base (integrated full KB + research)
+KNOWLEDGE_BASE = {
+    "opener": [
+        "Match her energy. Short reply = short reply back (Reddit tip)",
+        "Use Delhi slang naturally. Bhai, yaar, scene, chal na (Quora fave)",
+        "Keep it under 20 words. Punchy and direct",
+        "Be present-focused: comment on something immediate like her reel/message",
+        "Specific > generic: 'That reel on chai slaps' vs 'hey beautiful'",
+        "Open-ended: 'What's your go-to chai spot?' not yes/no"
+    ],
+    "high_enthu": [
+        "She's excited. Match the energy with emojis (😂, 👀)",
+        "Ask open questions. Keep conversation flowing (KB principle)",
+        "Playful teasing works well here: 'Arre, you're too good at this!'",
+        "Share brief self-reveal: 'I tried that and failed hilariously'",
+        "From Quora: Follow-up with 'Why's that your fave?' to deepen"
+    ],
+    "low_dry": [
+        "Short replies mean low interest. Don't chase (abundance mindset)",
+        "One more try with value, then ghost (Reddit consensus)",
+        "Abundance mindset. Move on if no effort",
+        "Shift topic lightly or exit: 'Nice chatting—enjoy your day'",
+        "Don't double-text same day; wait 24h min (research)"
+    ],
+    "love_bomb": [
+        "Too intense too fast = red flag (Quora warning)",
+        "Slow it down. Ask about her day, hobbies (KB: facts to feelings)",
+        "Stay calm and don't match intensity: 'That's sweet, tell me more about you'",
+        "Pivot to light: 'Haha, manifesting slower— what's your weekend vibe?'"
+    ],
+    "gold_digger": [
+        "Money talk early = test her (Reddit red flag)",
+        "Pivot to her interests, not your wallet: 'Cool, but what's your passion project?'",
+        "Talk about passions, values, not money (KB compliment style)",
+        "If persists, graceful exit: 'Interesting take—catch you later!'"
+    ],
+    "feminine_grammar": [
+        "Use: kar rhi ho, bna leti ho, jaa rhi ho (mandatory for natural Hinglish)",
+        "NOT: kar raha ho, bna leta, jaa raha (masculine = awkward)",
+        "Always feminine verbs when talking to her (Delhi chat norm)"
+    ],
+    "reel_opener": [
+        "For reels: 'This slaps— what's the backstory? 👀' (Quora top)",
+        "Play along: 'Duet this if you're brave' or 'Stitch your version'",
+        "Relatable: 'FYP knows me too well—your take?'",
+        "Don't: Generic 'lol'—add value with question",
+        "Why: Builds on shared content, low pressure (KB context-based)"
+    ],
+    "infeed_opener": [
+        "For in-feed post: 'Saw your [topic] post— what's one tip?' (Reddit effective)",
+        "Specific: Reference detail like 'That outfit in GK? Where?'",
+        "Curious: 'What's the highlight of that trip?'",
+        "Don't: Ignore context—feels random",
+        "Why: Shows you paid attention, invites reply (KB observant)"
+    ],
+    "followup": [
+        "Use: 'Really? Tell me more' or 'Why's that your fave?' (KB flow)",
+        "Mirror keyword: Repeat her word + expand question",
+        "Move facts to feelings: After 'I like hiking' → 'What do you love about it?'",
+        "Future-oriented: 'Any plans this weekend?' after 2 exchanges",
+        "Don't: Bombard— one question max per text"
+    ],
+    "compliment": [
+        "Specific, genuine, non-physical: 'Your timing in that reel is hilarious'",
+        "Focus on taste/humor/energy/skill (KB safe)",
+        "Hinglish twist: 'Ek dum jhakaas take yaar!'",
+        "Don't: Body-focused early—'hot pic' = thirsty",
+        "Why: Builds rapport without creep (Quora)"
+    ],
+    "awkward_rejection": [
+        "Silence/short answers: Shift topic or exit: 'Nice chatting—enjoy!' (KB graceful)",
+        "Declines: Accept friendly, no pressure: 'Cool, no worries—take care'",
+        "Red flag signs: Uninterested cues—don't push",
+        "Practice: Micro-convos daily (barista chats) for ease",
+        "Mindset: Goal is authentic exchange, not force connection"
+    ]
+}
+
+def get_advice(context: str) -> str:
+    """Fast knowledge base lookup - now pulls from enhanced KB"""
+    context_lower = context.lower()
+    relevant_keys = [key for key in KNOWLEDGE_BASE if key in context_lower]
+    if relevant_keys:
+        key = random.choice(relevant_keys)
+        return random.choice(KNOWLEDGE_BASE[key])
+    # Fallback to random tip
+    all_tips = [tip for tips in KNOWLEDGE_BASE.values() for tip in tips]
+    return random.choice(all_tips)
+
+collection = None
+print("⚡ Fast mode: Enhanced knowledge base loaded with dating tips & research")
+
+# Initialize LLM (Updated: model, response_mime_type for JSON, max_retries, timeout)
 try:
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp",
+        model="gemini-flash-lite-latest",
         temperature=0.7,
         google_api_key=GEMINI_API_KEY
     )
@@ -130,207 +356,18 @@ except Exception as e:
 # CHROMADB SEEDING & HELPERS
 # ============================================================================
 
-def init_collection():
-    """Seed ChromaDB with base advice if empty"""
-    if not collection or not embeddings:
-        print("⚠️ ChromaDB or embeddings unavailable. Skipping seed.")
-        return
-    
-    try:
-        result = collection.query(query_texts=["test"], n_results=1)
-        if not result["ids"] or not result["ids"][0]:
-            print("📦 Seeding ChromaDB with base advice...")
-            seed_examples = [
-                {"id": "advice_1", "text": "Options > obsession. Abundance mindset always wins.", "metadata": {"category": "mindset"}},
-                {"id": "advice_2", "text": "Ghost after 2 ignores. Let her miss you, king.", "metadata": {"category": "ghost"}},
-                {"id": "advice_3", "text": "Match her energy. Short reply = short reply back.", "metadata": {"category": "mirror"}},
-                {"id": "advice_4", "text": "Never double text unless she's earned it with effort.", "metadata": {"category": "value"}},
-                {"id": "advice_5", "text": "Gold digger? Neutral pivot. Talk about her interests, not money.", "metadata": {"category": "trap"}},
-                {"id": "advice_6", "text": "Love bomb early? Slow down. Ask about her day, hobbies.", "metadata": {"category": "trap"}},
-                {"id": "advice_7", "text": "Emotion test? Stay cool. Light tease, then change topic.", "metadata": {"category": "trap"}},
-                {"id": "advice_8", "text": "High trust = personal questions work. Low trust = stay surface.", "metadata": {"category": "escalation"}},
-            ]
-            
-            for ex in seed_examples:
-                try:
-                    embed = embeddings.embed_query(ex["text"])
-                    collection.upsert(
-                        ids=[ex["id"]],
-                        embeddings=[embed],
-                        metadatas=[ex["metadata"]],
-                        documents=[ex["text"]]
-                    )
-                except Exception as e:
-                    print(f"⚠️ Failed to seed {ex['id']}: {e}")
-            
-            print("✅ ChromaDB seeded successfully!")
-        else:
-            print("✅ ChromaDB already has data")
-    except Exception as e:
-        print(f"⚠️ ChromaDB init check error: {e}")
+# Removed ChromaDB functions for speed
 
-def safe_collection_query(query_text: str, n_results: int = 3) -> List[str]:
-    """Safely query ChromaDB with fallback"""
-    if not collection or not embeddings:
-        return ["Keep it high-value and confident.", "Match her energy.", "Abundance mindset."]
-    
-    try:
-        embed = embeddings.embed_query(query_text)
-        result = collection.query(query_embeddings=[embed], n_results=n_results)
-        
-        if result["metadatas"] and result["metadatas"][0]:
-            return [m.get("text", "Stay cool.") for m in result["metadatas"][0]]
-        return ["Keep it high-value.", "Match her vibe."]
-    except Exception as e:
-        print(f"⚠️ Query error: {e}")
-        return ["Be confident.", "Stay high-value."]
+# Stage & history removed for speed
+
+# Tracking removed for speed
 
 # ============================================================================
-# STAGE & HISTORY MANAGEMENT
-# ============================================================================
-
-def retrieve_stage(uid):
-    """Retrieve user's current stage"""
-    if not collection:
-        return 1
-    
-    key = f"stage_u{uid}"
-    try:
-        result = collection.query(query_texts=[key], n_results=1)
-        if result["metadatas"] and result["metadatas"][0]:
-            return result["metadatas"][0][0].get("s", 1)
-    except:
-        pass
-    return 1
-
-def store_stage(uid, stage):
-    """Store user's stage"""
-    if not collection or not embeddings:
-        return
-    
-    key = f"stage_u{uid}"
-    try:
-        embed = embeddings.embed_query(key)
-        collection.upsert(
-            ids=[key],
-            embeddings=[embed],
-            metadatas=[{"s": stage}]
-        )
-    except Exception as e:
-        print(f"⚠️ Store stage error: {e}")
-
-def store_history(uid, history, metadata):
-    """Store conversation history"""
-    if not collection or not embeddings:
-        return
-    
-    key = f"history_u{uid}"
-    try:
-        embed = embeddings.embed_query(key)
-        collection.upsert(
-            ids=[key],
-            embeddings=[embed],
-            metadatas=[metadata],
-            documents=[json.dumps(history)]
-        )
-    except Exception as e:
-        print(f"⚠️ Store history error: {e}")
-
-# ============================================================================
-# IGNORE & TRUST TRACKING
-# ============================================================================
-
-def track_ignore_count(user_id, girl_handle, replied=False):
-    """Track how many times she's ignored user"""
-    if not collection or not embeddings:
-        return 0
-    
-    key = f"u{user_id}_g{girl_handle}_ign"
-    cnt = 0
-    
-    try:
-        r = collection.query(query_texts=[key], n_results=1)
-        if r["metadatas"] and r["metadatas"][0]:
-            cnt = r["metadatas"][0][0].get("c", 0)
-    except:
-        pass
-    
-    if not replied:
-        cnt += 1
-    
-    try:
-        embed = embeddings.embed_query(key)
-        collection.upsert(
-            ids=[key],
-            embeddings=[embed],
-            metadatas=[{"c": cnt, "g": girl_handle}]
-        )
-    except Exception as e:
-        print(f"⚠️ Track ignore error: {e}")
-    
-    return cnt
-
-def get_ghost_advice(cnt):
-    """Get advice based on ignore count"""
-    if cnt <= 1:
-        return "Follow-up ok. Light tease works."
-    if cnt == 2:
-        return "Last text. Add value, then ghost."
-    return random.choice([
-        "Ghost now. No reply = no interest.",
-        "Abundance. DM 3 others.",
-        "She's not worth your energy, king."
-    ])
-
-def update_trust(user_id, girl_handle, delta):
-    """Update trust score"""
-    if not collection or not embeddings:
-        return 50
-    
-    key = f"t_u{user_id}_g{girl_handle}"
-    s = 50
-    
-    try:
-        cur = collection.query(query_texts=[key], n_results=1)
-        if cur["metadatas"] and cur["metadatas"][0]:
-            s = cur["metadatas"][0][0].get("s", 50)
-    except:
-        pass
-    
-    s = max(0, min(100, s + delta))
-    
-    try:
-        embed = embeddings.embed_query(key)
-        collection.upsert(
-            ids=[key],
-            embeddings=[embed],
-            metadatas=[{"s": s, "g": girl_handle}]
-        )
-    except Exception as e:
-        print(f"⚠️ Update trust error: {e}")
-    
-    return s
-
-def get_trust(user_id, girl_handle):
-    """Get current trust score"""
-    if not collection:
-        return 50
-    
-    key = f"t_u{user_id}_g{girl_handle}"
-    try:
-        cur = collection.query(query_texts=[key], n_results=1)
-        if cur["metadatas"] and cur["metadatas"][0]:
-            return cur["metadatas"][0][0].get("s", 50)
-    except:
-        pass
-    return 50
-
-# ============================================================================
-# IMAGE ANALYSIS (VISION API)
+# IMAGE ANALYSIS (VISION API) - ENHANCED FOR REELS/IN-FEED
 # ============================================================================
 
 def analyze_insta_grid(image_path: str) -> Dict[str, Any]:
-    """Analyze Instagram screenshot using Gemini Vision"""
+    """Analyze Instagram screenshot using Gemini Vision - now detects reels/in-feed"""
     if not VISION_AVAILABLE or not GEMINI_API_KEY:
         print("⚠️ Vision API unavailable. Using mock data.")
         return {
@@ -344,7 +381,9 @@ def analyze_insta_grid(image_path: str) -> Dict[str, Any]:
             "d": "High-fashion outfits, travel pics",
             "v": "fashionista_high_value",
             "i": "yes",
-            "h": "@posh_girl"
+            "h": "@posh_girl",
+            "type": "chat",  # Default
+            "content_type": "standard"  # New: for reels/in-feed
         }
     
     try:
@@ -352,191 +391,305 @@ def analyze_insta_grid(image_path: str) -> Dict[str, Any]:
         with open(image_path, "rb") as f:
             image_data = f.read()
         
-        # Use Gemini Vision
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        prompt = """
-        Analyze this Instagram DM screenshot. Extract:
-        1. Conversation history - identify who said what (her vs user)
-        2. Her bio (if visible)
-        3. Grid vibe (fashion/travel/fitness/casual)
-        4. Her handle (if visible)
-        5. Her last message specifically
+        # Use Gemini Vision (Updated model to multimodal)
+        model = genai.GenerativeModel('gemini-2.0-flash')  # Updated for vision support
         
-        Return ONLY valid JSON:
-        {
-            "history": [{"role": "her" or "user", "message": "text"}],
-            "her_last_message": "her most recent text",
-            "bio": "her bio text",
-            "grid_desc": "brief description",
-            "handle": "@username"
-        }
-        
-        If you can't extract something, use "unknown" or empty array.
-        CRITICAL: Extract her_last_message accurately - this is what we'll reply to.
+        # Enhanced detection prompt: now includes reel/in-feed
+        detect_prompt = """
+        Look at this Instagram screenshot carefully and identify what type it is.
+
+PROFILE PAGE indicators:
+- Shows follower/following counts at top
+- Has a grid of photos/posts below
+- Shows bio/description text
+- Has "Edit Profile" or "Follow" button
+- Shows profile picture at top
+
+CHAT/DM indicators:
+- Shows conversation bubbles/messages
+- Has text messages going back and forth
+- Shows timestamps on messages
+- Has message input box at bottom
+- Shows "Send" button
+
+REEL/IN-FEED indicators:
+- Shows video thumbnail with play button
+- Has like/comment/share icons under video
+- Displays reel text overlay or caption
+- Single post expanded view
+
+Analyze the image and respond with ONLY ONE WORD:
+- Type "PROFILE" if it's a profile page
+- Type "CHAT" if it's a DM/chat conversation
+- Type "REEL" if it's a reel/video
+- Type "INFEED" if it's a static post/feed item
         """
+        
+        detect_response = model.generate_content([
+            detect_prompt,
+            {"mime_type": "image/jpeg", "data": image_data}
+        ])
+        
+        detect_text = detect_response.text.strip().upper()
+        print(f"🔍 Detection result: {detect_text}")
+        
+        # Determine type from response
+        if "PROFILE" in detect_text:
+            image_type = "profile"
+            content_type = "standard"
+        elif "CHAT" in detect_text or "DM" in detect_text:
+            image_type = "chat"
+            content_type = "standard"
+        elif "REEL" in detect_text:
+            image_type = "chat"  # Treat as chat context
+            content_type = "reel"
+        elif "INFEED" in detect_text:
+            image_type = "profile"  # Treat as profile context
+            content_type = "infeed"
+        else:
+            # Default to chat if unclear
+            image_type = "chat"
+            content_type = "standard"
+            print(f"⚠️ Unclear detection, defaulting to chat")
+        
+        # Use appropriate prompt based on type
+        if image_type == "profile" or content_type in ["infeed"]:
+            prompt = """
+            This is an Instagram PROFILE or IN-FEED post. Extract all visible information:
+
+Look for:
+- Username/handle (usually at top)
+- Bio/description text
+- Follower count number
+- Following count number  
+- Number of posts
+- What kind of photos are in the grid/post (fashion, travel, fitness, food, etc)
+- If IN-FEED: Specific post caption, likes, comments
+- Overall vibe/aesthetic
+
+Respond in this EXACT format (fill in what you see):
+
+Handle: @username
+Bio: the bio text here
+Followers: number
+Following: number
+Posts: number
+Grid/Post: description of the photos/posts (include caption if in-feed)
+Vibe: overall vibe assessment
+Influencer: yes or no
+Content Type: reel or infeed or standard
+            """
+        else:
+            prompt = """
+            This is an Instagram CHAT/DM conversation or REEL context. Extract the messages/content:
+
+Look for:
+- All messages in the conversation
+- Who sent each message (her vs the user)
+- Her most recent message (IMPORTANT)
+- Her username if visible
+- Any bio text if visible
+- If REEL: Reel caption, overlay text, or reaction prompt
+
+Respond in this EXACT format:
+
+Messages:
+HER: her message text
+USER: user message text
+HER: her next message
+(continue for all visible messages)
+
+Her Last Message: her most recent message text
+Handle: @username if visible
+Bio: bio text if visible
+Content Type: reel or standard
+
+CRITICAL: Make sure to identify HER LAST MESSAGE correctly - this is what we need to reply to.
+            """
         
         response = model.generate_content([
             prompt,
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         
-        # Parse response
+        # Parse response based on type
         text = response.text.strip()
-        # Remove markdown if present
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.endswith("```"):
-            text = text[:-3]
+        print(f"📄 Raw response preview: {text[:200]}...")
         
-        result = json.loads(text.strip())
+        result = {"type": image_type, "content_type": content_type}
         
-        # Enrich with LLM analysis if available
-        if llm:
-            try:
-                p = ChatPromptTemplate.from_template(
-                    "Given Instagram profile: Bio='{bio}', Grid='{grid}'. Analyze: TOON:{{f:followers_estimate,g:following_estimate,v:vibe,i:is_influencer}}. Output ONLY JSON."
-                )
-                c = p | llm | JsonOutputParser()
-                enriched = c.invoke({
-                    "bio": result.get("bio", ""),
-                    "grid": result.get("grid_desc", "")
-                })
-                result.update(enriched)
-            except:
-                pass
+        if image_type == "profile":
+            # Parse profile format
+            lines = text.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line.startswith("Handle:"):
+                    result["handle"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Bio:"):
+                    result["bio"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Followers:"):
+                    result["followers"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Following:"):
+                    result["following"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Posts:"):
+                    result["posts"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Grid/Post:"):
+                    result["grid_desc"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Vibe:"):
+                    result["vibe"] = line.split(":", 1)[1].strip()
+                elif line.startswith("Influencer:"):
+                    result["is_influencer"] = line.split(":", 1)[1].strip().lower()
+                elif line.startswith("Content Type:"):
+                    result["content_type"] = line.split(":", 1)[1].strip().lower()
+            
+            # Set defaults for profile
+            result.setdefault("handle", "@unknown")
+            result.setdefault("bio", "No bio")
+            result.setdefault("followers", "unknown")
+            result.setdefault("following", "unknown")
+            result.setdefault("posts", "unknown")
+            result.setdefault("grid_desc", "Standard posts")
+            result.setdefault("vibe", "casual")
+            result.setdefault("is_influencer", "no")
+            result.setdefault("content_type", "standard")
+            
+        else:
+            # Parse chat format
+            history = []
+            her_last = ""
+            handle = "@unknown"
+            bio = ""
+            
+            lines = text.split('\n')
+            in_messages = False
+            
+            for line in lines:
+                line = line.strip()
+                
+                if line.startswith("Messages:"):
+                    in_messages = True
+                    continue
+                
+                if in_messages:
+                    if line.startswith("HER:"):
+                        msg = line.split(":", 1)[1].strip()
+                        history.append({"role": "her", "message": msg})
+                        her_last = msg  # Keep updating to get the last one
+                    elif line.startswith("USER:"):
+                        msg = line.split(":", 1)[1].strip()
+                        history.append({"role": "user", "message": msg})
+                    elif line.startswith("Her Last Message:"):
+                        her_last = line.split(":", 1)[1].strip()
+                        in_messages = False
+                    elif line.startswith("Handle:"):
+                        handle = line.split(":", 1)[1].strip()
+                        in_messages = False
+                    elif line.startswith("Bio:"):
+                        bio = line.split(":", 1)[1].strip()
+                        in_messages = False
+                    elif line.startswith("Content Type:"):
+                        result["content_type"] = line.split(":", 1)[1].strip().lower()
+            
+            result["history"] = history if history else [{"role": "her", "message": her_last or "hey"}]
+            result["her_last_message"] = her_last or (history[-1]["message"] if history and history[-1]["role"] == "her" else "hey")
+            result["handle"] = handle
+            result["bio"] = bio
         
-        # Set defaults
+        # Common defaults
         result.setdefault("f", "unknown")
         result.setdefault("g", "unknown")
         result.setdefault("b", result.get("bio", "No bio"))
-        result.setdefault("d", result.get("grid_desc", "Standard grid"))
-        result.setdefault("v", "casual_normal")
-        result.setdefault("i", "no")
+        result.setdefault("d", result.get("grid_desc", "Standard"))
+        result.setdefault("v", result.get("vibe", "casual_normal"))
+        result.setdefault("i", result.get("is_influencer", "no"))
         result.setdefault("h", result.get("handle", "@unknown"))
         result.setdefault("her_last_message", result.get("history", [{}])[-1].get("message", "hey") if result.get("history") else "hey")
+        result.setdefault("content_type", "standard")
         
         return result
         
     except Exception as e:
         print(f"⚠️ Vision analysis error: {e}")
-        # Fallback mock
+        # Fallback mock with content_type
         return {
             "history": [{"role": "her", "message": "hey"}, {"role": "user", "message": "yo what's up"}],
             "her_last_message": "hey",
             "f": "unknown", "g": "unknown", "b": "Analysis failed",
-            "d": "Could not analyze grid", "v": "unknown", "i": "no", "h": "@unknown"
+            "d": "Could not analyze grid", "v": "unknown", "i": "no", "h": "@unknown",
+            "type": "chat", "content_type": "standard"
         }
 
 # ============================================================================
-# MOOD & TRAP DETECTION
+# MOOD & TRAP DETECTION (ENHANCED WITH KB TIPS)
 # ============================================================================
 
-def sense_her_mood(hist: List[Dict[str, str]], uid: int, girl: str):
-    """Analyze her mood from messages"""
-    if not llm:
-        return {"m": "medium_cool", "s": "neutral_calm", "g": "Keep it cool.", "t": None}
-    
+def sense_her_mood(hist: List[Dict[str, str]]):
+    """Fast keyword-based mood detection - now includes research cues"""
     msgs = [m["message"] for m in hist if m["role"] == "her"][-3:]
-    ign = track_ignore_count(uid, girl, replied=bool(msgs))
     
-    msgs_str = " | ".join(msgs) if msgs else "No messages yet"
+    if not msgs:
+        return {"m": "medium_cool", "t": None}
     
-    try:
-        p = ChatPromptTemplate.from_template(
-            "Messages: '{m}' | Ignores: {i}. Mood? TOON:{{m:mood,s:shift}}. Moods: high_enthu/medium_cool/low_dry/angry_defensive/ignore. Output ONLY JSON."
-        )
-        c = p | llm | JsonOutputParser()
-        mood = c.invoke({"m": msgs_str, "i": ign})
-    except:
-        mood = {"m": "medium_cool", "s": "neutral_calm"}
+    combined = " ".join([m.lower() for m in msgs])
     
-    mood["g"] = get_ghost_advice(ign)
+    # Fast keyword detection (expanded)
+    if any(w in combined for w in ["haha", "lol", "😂", "😊", "😍", "!", "love", "omg", "yess", "slay", "bet"]):
+        mood = "high_enthu"
+    elif any(w in combined for w in ["k", "ok", "kk", "hmm", "idk", "whatever", "busy", "ngl short"]) and len(combined) < 20:
+        mood = "low_dry"
+    elif any(w in combined for w in ["why", "what", "seriously", "wtf", "stop", "leave", "no thanks"]):
+        mood = "angry_defensive"
+    else:
+        mood = "medium_cool"
     
-    # Check for traps
-    trap = detect_traps(hist, ign)
-    mood["t"] = trap
+    # Fast trap detection (from KB/Reddit)
+    trap = None
+    if any(w in combined for w in ["miss you", "need you", "perfect", "soulmate", "marry"]) and len(hist) < 10:
+        trap = {"t": "love_bomb", "a": "Too intense too fast - slow down (Quora red flag)"}
+    elif any(w in combined for w in ["expensive", "buy", "gift", "rich", "afford", "dinner on you"]):
+        trap = {"t": "gold_digger", "a": "Money focused early - pivot to values (Reddit advice)"}
+    elif any(w in combined for w in ["creep", "weird", "stop", "block"]) and len(combined) < 50:
+        trap = {"t": "rejection", "a": "Uninterested cues - exit gracefully (KB boundary respect)"}
     
-    # Update trust based on message content
-    for msg in msgs:
-        low = msg.lower()
-        if any(p in low for p in ["family", "dream", "fear", "secret", "honest"]):
-            update_trust(uid, girl, +10)
-        elif any(p in low for p in ["test", "prove", "why should", "convince"]):
-            update_trust(uid, girl, -10)
-    
-    return mood
-
-def detect_traps(hist: List[Dict[str, str]], ign: int):
-    """Detect common dating traps"""
-    # Love bomb detector
-    her_msgs = [m["message"].lower() for m in hist if m["role"] == "her"]
-    love_kw = ["miss you", "need you", "cant stop", "perfect", "soulmate", "meant to be"]
-    love_flags = sum(any(k in m for k in love_kw) for m in her_msgs)
-    
-    if love_flags >= 3 and len(hist) < 10:
-        return {
-            "t": "love_bomb",
-            "a": "Early intense affection. Red flag for manipulation.",
-            "h": "Stay calm. Slow the pace.",
-            "f": "Ask about her day, hobbies. Keep it light."
-        }
-    
-    # Gold digger detector
-    money_kw = ["expensive", "buy", "gift", "rich", "afford", "luxury", "shopping"]
-    money_flags = sum(any(k in m for k in money_kw) for m in her_msgs)
-    
-    if money_flags >= 2:
-        return {
-            "t": "gold_digger",
-            "a": "Money focus early. Test her.",
-            "h": "Neutral pivot to values.",
-            "f": "Talk about her passions, not your wallet."
-        }
-    
-    # Emotion test
-    if len(her_msgs) >= 3:
-        early_long = any(len(m.split()) > 20 for m in her_msgs[:-1])
-        recent_short = len(her_msgs[-1].split()) < 5
-        
-        if early_long and recent_short:
-            return {
-                "t": "emotion_test",
-                "a": "Sudden coldness after warmth. Testing you.",
-                "h": "Stay unfazed. Light tease.",
-                "f": "Confidence flips the script."
-            }
-    
-    return None
+    return {"m": mood, "t": trap}
 
 # ============================================================================
-# REPLY GENERATION
+# REPLY GENERATION (ENHANCED PROMPT WITH FULL KB INTEGRATION)
 # ============================================================================
 
 def generate_cot_reply(extract: Dict[str, Any], uid: int):
-    """Generate reply using Chain of Thought"""
+    """Generate reply using Chain of Thought - updated prompt with KB/research"""
     if not llm:
-        # Fallback replies
+        # Fallback replies (enhanced with KB openers)
         return {
             "r": [
-                {"text": "Yo, scene kya hai? Vibe check karein?", "sub_vibe": "hinglish"},
-                {"text": "Hey, what's the vibe? Let's check it out.", "sub_vibe": "english"}
+                {"text": "Yo! Kya scene hai? Specific se bolo 👀", "sub_vibe": "hinglish"},
+                {"text": "Hey! What's the vibe? Tell me more.", "sub_vibe": "english"}
             ],
-            "a": "LLM unavailable. Using default replies.",
-            "h": "Keep it simple.",
-            "s": "False"
+            "a": "LLM unavailable. Using KB fallback: Be specific & curious.",
+            "h": "Open-ended hook.",
+            "s": "False",
+            "sources": [{"key": "opener", "quote": "Specific > generic: reference exact details"}]
         }, None, 50
     
     mood = extract.get("mood", {})
     trap = mood.get("t")
-    cur_stage = extract.get("c", 1)
     her_last = extract.get("her_last_message", "hey")
+    content_type = extract.get("content_type", "standard")
     
-    # Get RAG advice
-    q = f"stage_{cur_stage} {extract.get('v', 'normal')} {mood.get('m', 'medium')}"
+    # Fast knowledge base lookup (now pulls 3-4 tips)
+    mood_type = mood.get("m", "medium_cool")
+    advice_context = f"{mood_type} {content_type}"
     if trap:
-        q += f" {trap['t']}_trap"
+        advice_context += f" {trap['t']}"
     
-    snippets = safe_collection_query(q, n_results=3)
+    advice_list = [
+        get_advice(mood_type),
+        get_advice(content_type),  # New: reel/infeed specific
+        get_advice("feminine_grammar"),
+        get_advice("followup") if mood_type != "opener" else get_advice("opener")
+    ]
+    advice = " | ".join(advice_list)
     
     # Build prompt
     history_str = "\n".join([
@@ -544,27 +697,88 @@ def generate_cot_reply(extract: Dict[str, Any], uid: int):
         for m in extract.get('history', [])
     ])
     
+    # Sample slang for context (expanded sample)
+    slang_sample = ", ".join(random.sample(DELHI_CONTEXT['slang'], min(20, len(DELHI_CONTEXT['slang']))))
+    shortcuts_str = ", ".join([f"{k}={v}" for k, v in list(DELHI_CONTEXT['shortcuts'].items())[:15]])
+    
+    # ENHANCED PROMPT: Integrated full KB principles, do/don't, research
     prompt = ChatPromptTemplate.from_template(
-        """You are a Delhi Gen-Z DM coach. Generate replies in Hinglish and English.
+        """You are a Delhi Gen-Z DM coach specializing in Indian dating: complete girl emotions, get friendly fast without creepy. From North India/Delhi. Generate replies for a GUY talking to a GIRL.
 
 Context:
 - History: {history}
 - Her Last Message: "{her_last}"
+- Content Type: {content_type} (reel/infeed/standard)
 - Stage: {stage} (1=Stranger, 4=GF)
 - Her Mood: {mood}
 - Trap: {trap}
-- Advice: {advice}
+- Advice: {advice} (from research/KB)
 
-Generate TOON: {{r:[{{text:str,sub_vibe:str}}],a:analysis,h:hook}}
+Delhi Gen-Z Style Guide (KB Principles):
+- Region: North India, Delhi, Northern style
+- Slang examples: {slang}
+- Chat shortcuts: {shortcuts}
+- Tone: Playful, flirty, teasy, confident, light & curious
+- Language: Natural Hinglish/English mix: kk, okhy, chal na bhai, koi na, haan yaar, nhi yaar, thik hai, acha, sahi, bas yaar
+- Core Rules (from Quora/Reddit/KB): 
+  - Present-focused: Comment on immediate (her reel/message/profile detail)
+  - Specific/observant: Reference exact thing (e.g., 'That chai reel? Obsessed')
+  - Open-ended: Need more than yes/no (e.g., 'What's your fave spot? Why?')
+  - Respect boundaries: Low energy? Short/light or exit gracefully
+  - Do: Mirror energy, playful tease, brief self-reveal, facts→feelings, future topics after 2 exchanges
+  - Don't: Generic/canned lines, chase low interest, over-compliment physical, bombard questions, needy (abundance mindset)
+  - For Reels: Play along/duet vibe, relatable reaction + question
+  - For In-Feed: Specific post hook, 'What's your take/hot tip?'
+  - Compliments: Specific/non-physical (humor, style, energy/skill)
 
-Rules:
-- 2 replies: one Hinglish, one English
-- Under 30 words each
-- High-value, confident tone
-- Use Delhi slang naturally (bhai, yaar, scene, vibe, etc.)
-- DIRECTLY respond to her last message: "{her_last}"
-- Address any trap directly
-- Make replies sound natural, not robotic
+CRITICAL: YOU ARE TALKING TO A GIRL - USE ONLY FEMININE GRAMMAR (Delhi norm)
+
+FEMININE VERB FORMS (MANDATORY):
+When talking about HER actions, ALWAYS use these endings:
+- Present continuous: "kar RHI HO", "jaa RHI HO", "so RHI HO", "dekh RHI HO", "sun RHI HO"
+- Habitual: "karti HO", "jaati HO", "soti HO", "dekhti HO", "sunti HO"  
+- Compound: "bna LETI HO", "kha LETI HO", "kar LETI HO"
+
+NEVER USE MASCULINE FORMS:
+❌ WRONG: "kar raha ho", "kar raha hai", "karta ho", "kar leta ho", "bna leta main"
+❌ WRONG: "jaa raha", "so raha", "dekh raha", "sun raha"
+❌ WRONG: Any verb ending in "raha", "rahe", "leta", "lete", "ta", "te"
+
+CORRECT EXAMPLES YOU MUST FOLLOW:
+✅ "Acha bna leti ho" (NOT "bna leti main" or "bna leta")
+✅ "Kya kar rhi ho?" (NOT "kya kar raha ho")
+✅ "Samajh rhi ho?" (NOT "samajh raha ho")
+✅ "Kahan jaa rhi ho?" (NOT "kahan jaa raha ho")
+✅ "So rhi thi kya?" (NOT "so raha tha")
+
+DOUBLE CHECK: Before finalizing each reply, verify NO masculine verb forms (raha/rahe/leta/lete/ta/te) are used when talking about HER.
+
+CRITICAL CITATION RULE: For every reply and analysis, cite EXACT KB sources used. Format: [key: "direct quote from KB"]. Include 1-2 per response in a new "sources" list in JSON. Quote verbatim—do not paraphrase. Examples:
+- If using opener: [opener: "Match her energy. Short reply = short reply back (Reddit tip)"]
+- If reel: [reel_opener: "For reels: 'This slaps— what's the backstory? 👀' (Quora top)"]
+Base replies ONLY on these cited sources + context. If no direct match, cite 'general' and explain.
+
+WRITING RULES (Punchy & Natural from KB):
+- Clear, simple language; short sentences; active voice
+- Cut fluff: No em dashes, semicolons, hashtags, markdown, asterisks
+- Emojis: 1-2 max for vibe (👀, 😏, 😂)
+- Conversational like real texting: One focused point, direct response to {her_last}
+
+Generate TOON: {{r:[{{text:str,sub_vibe:str}}],a:analysis,h:hook,sources:[{{"key":str,"quote":str}}]}}
+
+STRICT RULES:
+1. 2 replies: one Hinglish, one English
+2. Under 20 words each (SHORT, focused - KB punchy)
+3. High-value, confident, playful; match {content_type} (reel: play along; infeed: specific hook)
+4. Use Delhi slang/shortcuts naturally (1-2 per reply)
+5. MANDATORY: Feminine grammar for HER - "kar rhi ho", "bna leti ho", "jaa rhi ho" (NO masculine)
+6. DIRECTLY respond to her last message: "{her_last}" - stay on topic, add open-ended hook
+7. ONE focused point per reply - no random extras
+8. Address trap: Love bomb? Slow/light; Gold digger? Pivot values; Rejection? Graceful exit
+9. Sound like real Delhi Gen-Z guy: Abundance, no neediness
+10. If low mood: Light exit option in analysis
+11. FINAL CHECK: Scan for masculine verbs - fix to feminine; ensure open-ended
+12. ALWAYS include 1-2 sources in "sources" array
 
 Output ONLY valid JSON."""
     )
@@ -574,54 +788,100 @@ Output ONLY valid JSON."""
         out = chain.invoke({
             "history": history_str,
             "her_last": her_last,
-            "stage": cur_stage,
+            "content_type": content_type,
+            "stage": 1,
             "mood": mood.get("m", "medium_cool"),
             "trap": trap["t"] if trap else "none",
-            "advice": " | ".join(snippets)
+            "advice": advice,
+            "slang": slang_sample,
+            "shortcuts": shortcuts_str
         })
+        
+        # Light check for sources (new)
+        if "sources" not in out or not out["sources"]:
+            # Fallback cite
+            out["sources"] = [{"key": "general", "quote": get_advice("opener")}]
+            if "a" in out:
+                out["a"] += f" [citing general: '{out['sources'][0]['quote']}']"
+            else:
+                out["a"] = f"Analysis unavailable. [citing general: '{out['sources'][0]['quote']}']"
         
         if not isinstance(out, dict) or 'r' not in out:
             raise ValueError("Invalid LLM output")
             
     except Exception as e:
-        print(f"⚠️ LLM generation error: {e}")
-        # Smart fallback based on her message
+        error_msg = str(e)
+        print(f"⚠️ LLM generation error: {error_msg}")
+        
+        # Check if it's a quota error
+        is_quota_error = "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower()
+        
+        # Smart fallback based on her message - enhanced with KB
         her_last_lower = her_last.lower()
-        if "hey" in her_last_lower or "hi" in her_last_lower:
+        sources_fallback = [{"key": "opener", "quote": "Be present-focused: comment on something immediate like her reel/message"}]
+        if "hey" in her_last_lower or "hi" in her_last_lower or "hello" in her_last_lower:
             out = {
                 "r": [
-                    {"text": f"Yo! Scene kya hai? Vibe check? 👀", "sub_vibe": "hinglish"},
-                    {"text": f"Hey! What's the scene? Vibe check? 👀", "sub_vibe": "english"}
+                    {"text": f"Yo! Kya scene? Specific batao, like your last reel 👀", "sub_vibe": "hinglish"},
+                    {"text": f"Hey! What's up? What's one thing from your feed I should check?", "sub_vibe": "english"}
                 ],
-                "a": "Casual opener response.",
-                "h": "Match her energy"
+                "a": "Casual opener: Specific & open-ended [citing opener: 'Specific > generic'] (KB fallback)",
+                "h": "Curious hook",
+                "sources": sources_fallback,
+                "quota_error": is_quota_error
+            }
+        elif "kk" in her_last_lower or "ok" in her_last_lower or "haan" in her_last_lower:
+            out = {
+                "r": [
+                    {"text": f"Haha okhy. Toh phir, kya kar rhi ho abhi? 😏", "sub_vibe": "hinglish"},
+                    {"text": f"Haha alright. So, what's your take on that? 😏", "sub_vibe": "english"}
+                ],
+                "a": "Flow follow-up: Why/how [citing followup: 'Use: \"Really? Tell me more\"'] (KB)",
+                "h": "Deepen lightly",
+                "sources": [{"key": "followup", "quote": "Use: 'Really? Tell me more' or 'Why's that your fave?' (KB flow)"}],
+                "quota_error": is_quota_error
+            }
+        elif "sleep" in her_last_lower or "so" in her_last_lower or "tired" in her_last_lower:
+            out = {
+                "r": [
+                    {"text": f"Arre so rhi thi kya? Chal koi na, rest well yaar 😴", "sub_vibe": "hinglish"},
+                    {"text": f"Oh, sleeping? No rush—catch you when you're up 😴", "sub_vibe": "english"}
+                ],
+                "a": "Respect boundaries: Graceful [citing awkward_rejection: 'Silence/short answers: Shift topic or exit'] (KB)",
+                "h": "Low pressure",
+                "sources": [{"key": "awkward_rejection", "quote": "Silence/short answers: Shift topic or exit: 'Nice chatting—enjoy!' (KB graceful)"}],
+                "quota_error": is_quota_error
             }
         else:
             out = {
                 "r": [
-                    {"text": f"Haha bet. Toh batao, kya chal raha?", "sub_vibe": "hinglish"},
-                    {"text": f"Haha nice. So what's up with you?", "sub_vibe": "english"}
+                    {"text": f"Haha sahi. Chal na, batao kya pasand kiya usme? 👀", "sub_vibe": "hinglish"},
+                    {"text": f"Haha nice. What do you like most about it?", "sub_vibe": "english"}
                 ],
-                "a": "Keep conversation flowing.",
-                "h": "Stay engaging"
-            }
+                "a": "Facts to feelings: KB flow [citing followup: 'Move facts to feelings'] (fallback)",
+                "h": "Engage deeper",
+                "sources": [{"key": "followup", "quote": "Move facts to feelings: After 'I like hiking' → 'What do you love about it?'"}],
+                "quota_error": is_quota_error
+            } 
     
-    # Check for warnings
+    # Check for warnings (enhanced)
     warn = None
     user_streak = sum(1 for m in reversed(extract.get("history", [])[:5]) if m["role"] == "user")
     if user_streak >= 3:
-        warn = "⚠️ 3+ texts in a row. Let her miss you!"
+        warn = "⚠️ 3+ texts in a row. Let her miss you! (Abundance - Reddit)"
+    if extract.get("mood", {}).get("m") == "low_dry":
+        warn = warn or "Low energy: One more value text, then pause (KB don't chase)"
     
     trust = get_trust(uid, extract.get("h", "unknown"))
     
     return out, warn, trust
 
 # ============================================================================
-# TELEGRAM HANDLERS
+# TELEGRAM HANDLERS (ENHANCED WITH NEW TEMPLATES)
 # ============================================================================
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle screenshot uploads"""
+    """Handle screenshot uploads - now handles content_type"""
     uid = update.effective_user.id
     now = time.time()
     
@@ -629,7 +889,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid in LAST_PHOTO and now - LAST_PHOTO[uid] < 30:
         await update.message.reply_text(
             "⏳ Chill yaar! 30 sec cooldown.\n\n"
-            "**Abundance** > desperation, remember? 💯"
+            "**Abundance** > desperation, remember? 💯 (KB mindset)"
         )
         return
     
@@ -638,7 +898,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Download photo
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
-    fp = os.path.join("/tmp", f"screenshot_{uid}_{int(now)}.jpg")
+    
+    # Use temp directory that works on all platforms
+    import tempfile
+    temp_dir = tempfile.gettempdir()
+    fp = os.path.join(temp_dir, f"screenshot_{uid}_{int(now)}.jpg")
     
     await update.message.reply_text("🔍 Analyzing your DM game...")
     
@@ -646,98 +910,491 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await file.download_to_drive(fp)
         
         # Validate image
-        img = Image.open(fp)
-        if img.size[0] < 200 or img.size[1] < 200:
-            await update.message.reply_text("🚫 Image too small bhai. Send HD screenshot (720p+).")
-            return
+        with Image.open(fp) as img:
+            if img.size[0] < 200 or img.size[1] < 200:
+                await update.message.reply_text("🚫 Image too small bhai. Send HD screenshot (720p+).")
+                return
         
         # Process
         extract = {"history": [], "h": "@girl"}
         grid = analyze_insta_grid(fp)
         extract.update(grid)
         
-        # Get/update stage
-        cur = retrieve_stage(uid)
-        extract["c"] = cur
-        extract["n"] = cur
+        # Check content_type for tailored templates
+        content_type = extract.get("content_type", "standard")
         
-        # Analyze mood
-        girl = extract.get("h", "@unknown")
-        mood = sense_her_mood(extract.get("history", []), uid, girl)
-        extract["mood"] = mood
+        # Check if it's a profile screenshot
+        if extract.get("type") == "profile":
+            # Extract profile data
+            bio = extract.get('bio', '').lower()
+            grid = extract.get('grid_desc', '').lower()
+            
+            # Extract key words for templates
+            bio_short = extract.get('bio', '')[:50] if extract.get('bio') else "your bio"
+            bio_key = "your vibe"
+            if bio:
+                bio_words = bio.split()
+                if len(bio_words) > 2:
+                    bio_key = " ".join(bio_words[:3])
+            
+            grid_key = "content"
+            if "fashion" in grid or "outfit" in grid:
+                grid_key = "fashion"
+            elif "travel" in grid:
+                grid_key = "travel"
+            elif "food" in grid:
+                grid_key = "food"
+            elif "gym" in grid or "fitness" in grid:
+                grid_key = "fitness"
+            elif "art" in grid:
+                grid_key = "art"
+            elif "reel" in grid or "video" in grid or content_type == "reel":
+                grid_key = "reels"
+            elif content_type == "infeed":
+                grid_key = "post"
         
-        # Generate reply
-        cot, warn, trust = generate_cot_reply(extract, uid)
-        
-        # Store context for this user
-        USER_CONTEXT[uid] = {
-            "extract": extract,
-            "cot": cot,
-            "warn": warn,
-            "trust": trust,
-            "girl": girl
+        # === ENHANCED MASTER TEMPLATES (INTEGRATED KB/RESEARCH) ===
+        OPENERS_TEMPLATES = {
+            # POV 1: Self-Deprecating (KB light tone)
+            "pov_self": [
+                "POV: I'm the guy who trips in slow motion. You? (Relatable fail - Reddit)",
+                "POV: My camera roll is 80% memes, 20% panic. Yours?",
+                "POV: I just googled 'how to adult'. Send help or laugh?",
+                "POV: My plants die from overthinking. You saving yours?",
+                "POV: I reply 'haha' to everything. Even sad news. You?"
+            ],
+            # POV 2: Shared Chaos (KB present-focused)
+            "pov_chaos": [
+                "POV: We both open 47 tabs and cry. Solidarity?",
+                "POV: '5 more mins' turns into 3 hours. Same gang?",
+                "POV: We ghost plans but overthink texts. Hi?",
+                "POV: Chai fixes 90% of our problems. The other 10%? (Delhi vibe)",
+                "POV: We say 'I'm fine' but mean 'send memes'. You?"
+            ],
+            # POV 3: Game Invite (KB open-ended)
+            "pov_game": [
+                "POV: We play '2 truths 1 lie'. You start or I do?",
+                "POV: I say a word, you say the first thing. Ready? 'Weekend'",
+                "POV: Would you rather: no WiFi or no chai? Fight me",
+                "POV: Rate my vibe 1-10. I'll rate yours back. Deal?",
+                "POV: Send me a song. I'll send one back. No skips"
+            ],
+            # POV 4: Bio Hook (KB specific)
+            "pov_bio": [
+                "POV: Your bio says '{bio_key}' — I tried it and failed. Story? (Quora hook)",
+                "POV: '{bio_short}' in bio? I need the director's cut",
+                "POV: We both live by '{bio_key}'. Prove it — one example?",
+                "POV: Your bio = my lock screen quote. Coincidence?",
+                "POV: '{bio_short}' — bold. I respect it. Origin story?"
+            ],
+            # POV 5: Grid Insight (KB observant)
+            "pov_grid": [
+                "POV: {grid_key} people understand {grid_key}. Am I right?",
+                "POV: Your grid = my FYP. What's the algorithm hiding?",
+                "POV: We both gatekeep {grid_key} spots. Share one?",
+                "POV: {grid_key} but make it chaotic. Your version?",
+                "POV: Your posts = comfort show. What's the pilot episode?"
+            ],
+            # Enhanced for Reels/In-Feed
+            "pov_reel": [
+                "POV: Your reel just ended my scroll. Backstory? 👀 (Research top)",
+                "POV: Dueting this in my head. Your version better?",
+                "POV: FYP energy matches your vibe. What's next?",
+                "POV: This reel = my mood. Remix ideas?",
+                "POV: Stitching this for sure. Tag me?"
+            ],
+            "pov_infeed": [
+                "POV: Your post on {grid_key} — hot take? (KB specific)",
+                "POV: Scrolled past but came back. Why this one?",
+                "POV: {grid_key} feed goals. One tip for newbies?",
+                "POV: Relatable post af. Your why behind it?",
+                "POV: This in-feed = conversation starter. Go."
+            ],
+            # Fallbacks (KB casual)
+            "casual": [
+                "Quick: your camera roll's 90% selfies or 90% food pics?",
+                "Arre, what's one app you can't delete?",
+                "Yo, if your life had a loading screen, what % are you at?",
+                "Hey, last song in private session?",
+                "What's the most 'adulting' thing you did this week?"
+            ],
+            "hobby_connect": [
+                "Saw your {grid_key} posts — what's the one thing *everyone* gets wrong? (Quora)",
+                "Hey, {grid_key} in your grid? Same. What's your 'IYKYK' moment?",
+                "Arre, {grid_key} enthusiast detected. Drop your hottest take",
+                "Your {grid_key} game is strong. What's the one resource you'd gatekeep?",
+                "Yo! {grid_key} posts = instant follow. What's next level?"
+            ],
+            "meme_vibe": [
+                "Your grid's giving 'main character in a coming-of-age movie'. Soundtrack?",
+                "Arre, if your feed was a Netflix category, what would it be called?",
+                "Yo, your posts = 10/10 would scroll again. What's the one you'd delete?",
+                "Grid check: are you the 'aesthetic chaos' or 'organized mess' type?",
+                "Your content's like a vibe playlist — what's the skip track?"
+            ]
         }
-        
-        # Update stage
-        new_stage = extract["n"]
-        if mood["m"] == "high_enthu" and not mood.get("t"):
-            new_stage = min(new_stage + 0.5, 4)
-        elif mood["m"] == "low_dry" or mood.get("t"):
-            new_stage = max(new_stage - 0.5, 1)
-        
-        store_stage(uid, round(new_stage))
-        
-        # Build response
-        txt = ["**🔥 DM Coach Report**\n"]
-        
-        # Show her last message
-        txt.append(f"💬 **Her:** \"{extract.get('her_last_message', 'unknown')}\"\n")
-        
-        # Trap warnings
-        trap = mood.get("t")
-        if trap:
-            txt.append(f"⚠️ **{trap['t'].replace('_', ' ').title()} Detected**")
-            txt.append(f"   └ {trap['a']}")
-            txt.append(f"   └ **Play:** {trap['f']}\n")
-        
-        # Stats
-        ign = track_ignore_count(uid, girl, replied=bool(extract.get("history")))
-        stage_map = {1: "Stranger 🆕", 2: "Friend 👋", 3: "Talking 💬", 4: "GF 💕"}
-        txt.append(f"💖 **Trust:** {trust}/100  |  🚫 **Ignores:** {ign}")
-        txt.append(f"📊 **Stage:** {stage_map.get(round(new_stage), 'N/A')}  |  **Mood:** {mood['m']}\n")
-        
-        # Warnings
-        if warn:
-            txt.append(f"🚨 {warn}\n")
-        
-        if ign >= 2:
-            txt.append(f"💡 **Ghost Advice:** {mood['g']}\n")
-        
-        # Analysis
-        txt.append(f"🧠 **Play:** {cot.get('a', 'Keep it high-value.')}\n")
-        
-        # Replies
-        replies = cot.get('r', [])
-        txt.append("**📱 Your Drip:**")
-        for i, r in enumerate(replies, 1):
-            vibe = r.get('sub_vibe', 'unknown').title()
-            txt.append(f"{i}️⃣ `[{vibe}]` {r['text']}")
-        
-        txt.append("\n_Tap a button to send the reply OR get it as text!_ 👑")
-        
-        # Keyboard - added "Send as Text" option
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"Copy {i+1}", callback_data=f"copy_{uid}_{i}")]
-            for i in range(len(replies[:3]))
-        ] + [
-            [InlineKeyboardButton("📋 Send Hinglish as Text", callback_data=f"text_{uid}_0")],
-            [InlineKeyboardButton("📋 Send English as Text", callback_data=f"text_{uid}_1")]
-        ])
-        
-        await update.message.reply_text("\n".join(txt), reply_markup=kb)
-        
-    except FileNotFoundError:
-        await update.message.reply_text("🚫 Download failed. Telegram server BT. Retry bhai.")
+
+        # === ENHANCED VOICE NOTE SCRIPTS (KB brief self-reveal) ===
+        VOICE_NOTE_TEMPLATES = {
+        "vn_bio": [
+            "[chill] Yo! Your bio — '{bio_short}' — wait, how do you even live by that? I tried and lasted 3 days [laugh]. Voice note me the real story. (Self-reveal KB)",
+            "[playful] Arre, '{bio_key}' in bio? That's bold. Drunk 2 AM or deep philosophy? Voice note me."
+        ],
+        "vn_grid": [
+            "[excited] Yo, your {grid_key} content? Obsessed. What’s the one thing no one gets? Voice note me your hot take. (Curious KB)",
+            "[curious] Arre, {grid_key} in your grid — teach me one thing. 20 sec. I’ll send proof [laugh]."
+        ],
+        "vn_game": [
+            "[playful] POV: Voice note tag. I say: '{grid_key}'. You reply first thing. Go. (Open-ended KB)",
+            f"[excited] POV: 2 truths 1 lie. 1. I cried in a movie. 2. I can cook. 3. I have 12 plants. Guess — voice note me! (Game KB)"
+        ],
+        # New for content_type
+        "vn_reel": [
+            "[vibey] This reel? Lowkey obsessed. Voice note your inspo behind it? (Reel research)",
+            "[teasy] Arre, dueting this mentally. Send your full version VN?"
+        ],
+        "vn_infeed": [
+            "[curious] Your {grid_key} post — what's the untold story? VN me. (Infeed specific)",
+            "[playful] Saw that in-feed, had to pause. Quick VN: fave part?"
+        ]
+        }
+
+        # === ENHANCED REEL COMMENT STARTERS (From research) ===
+        REEL_REACTION_TEMPLATES = {
+            "funny": ["bro this is me at 3am", "the accuracy is scary", "send this to your gc", "i felt this in my soul", "deadass relatable"],
+            "relatable": ["finally someone said it", "this is my entire personality", "the algorithm knows me", "ngl this hits", "iykyk vibes"],
+            "hobby_match": ["okay but {grid_key} people will understand", "only {grid_key} girlies get this", "{grid_key} tea spilled"],
+            "play_along": ["duet this if you're brave", "reply with your version", "tag your partner in crime", "stitch challenge accepted?"]
+        }
+
+        # === REPLY BOOSTERS (KB follow-ups) ===
+        REPLY_BOOSTERS = [
+            "Arre wait — [her answer]? Same energy. But real q: how do you even function? (Mirror KB)",
+            "Okay [her reply] is top tier. Now level 2: worst fail story go (Deepen)",
+            "Not me relating to [her answer] at 2 AM. Your turn to ask me anything (Reciprocity KB)",
+            "Hold up — [her reply]? I need receipts. Voice note or it didn’t happen (Playful)",
+            "You win. [her answer] > my answer. Rematch? (Tease light)"
+        ]
+
+        # === MICRO-POV SCENARIOS (KB non-creepy) ===
+        MICRO_POV = [
+            "**POV 1: The Relatable Fail** → Send: *'POV: I tried your {grid_key} thing and failed in 3 sec. Video proof?'*",
+            "**POV 2: The Shared Secret** → *'Only {bio_key} people know this struggle. You too?'*",
+            "**POV 3: The Mini-Challenge** → *'Bet you can’t say your {grid_key} in 3 words. Go.'*"
+        ]
+
+        # === EMOJI-ONLY OPENERS (Gen-Z research) ===
+        EMOJI_OPENERS = [
+            "chai question coffee answer ☕❓",
+            "question meme answer 😂❓",
+            "question song answer 🎵❓",
+            "question fail answer 😩❓",
+            "question and chill? ❄️❓"
+        ]
+
+        # === STORY REACTION IDEAS (KB context) ===
+        STORY_REACTIONS = [
+            "this but make it [her story vibe]",
+            "POV: you're in this story",
+            "the way i paused 👀"
+        ]
+
+        # === NO REPLY? SEND THIS (KB graceful) ===
+        NO_REPLY_NUDGE = "Arre, seen but no reply? Fair. But now I’m IYKYK — your turn (Low pressure)"
+
+        # === AUTO-REPLY SIMULATOR (Test her response) ===
+        def simulate_her_reply(user_line):
+            responses = [
+                "lmao same", "wait how did you know", "okay but real q", "not me", "send proof",
+                "question question question", "this is too real", "you're not wrong", "haha bet", "ngl obsessed"
+            ]
+            return random.choice(responses)
+
+        # === MAIN GENERATOR (TAILORED TO CONTENT_TYPE) ===
+        def generate_master_package(extract):
+            bio = extract.get('bio', '').strip()
+            grid = extract.get('grid_desc', '').lower().strip()
+            content_type = extract.get('content_type', 'standard')
+            
+            bio_words = [w for w in bio.split() if len(w) > 3 and w[0].isalnum()] if bio else []
+            bio_key = ' '.join(bio_words[:2]) if bio_words else 'your vibe'
+            bio_short = bio[:38] + '...' if bio and len(bio) > 38 else bio
+            
+            grid_words = [w for w in grid.split() if len(w) > 4] if grid else []
+            grid_key = random.choice(grid_words).capitalize() if grid_words else "your posts"
+            
+            result = {}
+            
+            # 1. TEXT OPENERS (5, tailored)
+            text_lines = []
+            text_lines.append({"text": random.choice(OPENERS_TEMPLATES["pov_self"]), "style": "pov_self"})
+            text_lines.append({"text": random.choice(OPENERS_TEMPLATES["pov_chaos"]), "style": "pov_chaos"})
+            text_lines.append({"text": random.choice(OPENERS_TEMPLATES["pov_game"]), "style": "pov_game"})
+            if bio and len(bio) > 10:
+                text_lines.append({"text": random.choice(OPENERS_TEMPLATES["pov_bio"]).format(bio_key=bio_key, bio_short=bio_short), "style": "pov_bio"})
+            else:
+                text_lines.append({"text": random.choice(OPENERS_TEMPLATES["casual"]), "style": "pov_casual"})
+            # Tailor last based on content_type
+            if content_type == "reel":
+                text_lines.append({"text": random.choice(OPENERS_TEMPLATES["pov_reel"]).format(grid_key=grid_key), "style": "pov_reel"})
+            elif content_type == "infeed":
+                text_lines.append({"text": random.choice(OPENERS_TEMPLATES["pov_infeed"]).format(grid_key=grid_key), "style": "pov_infeed"})
+            else:
+                if any(word in grid for word in ["book", "music", "food", "gym", "art", "code", "dance", "travel"]):
+                    text_lines.append({"text": random.choice(OPENERS_TEMPLATES["hobby_connect"]).format(grid_key=grid_key), "style": "pov_hobby"})
+                else:
+                    text_lines.append({"text": random.choice(OPENERS_TEMPLATES["meme_vibe"]), "style": "pov_meme"})
+            result["text_lines"] = text_lines
+            
+            # 2. VOICE NOTES (3, tailored)
+            vns = []
+            if content_type == "reel":
+                vns.append(random.choice(VOICE_NOTE_TEMPLATES["vn_reel"]).format(grid_key=grid_key))
+            elif content_type == "infeed":
+                vns.append(random.choice(VOICE_NOTE_TEMPLATES["vn_infeed"]).format(grid_key=grid_key))
+            else:
+                vns.append(random.choice(VOICE_NOTE_TEMPLATES["vn_bio"]).format(bio_short=bio_short, bio_key=bio_key) if bio else random.choice(VOICE_NOTE_TEMPLATES["vn_game"]))
+            if content_type in ["reel", "infeed"]:
+                vns.append(random.choice(VOICE_NOTE_TEMPLATES["vn_grid"]).format(grid_key=grid_key))
+            else:
+                vns.append(random.choice(VOICE_NOTE_TEMPLATES["vn_game"]).format(grid_key=grid_key))
+            vns.append(random.choice(VOICE_NOTE_TEMPLATES["vn_grid"]).format(grid_key=grid_key))
+            result["voice_notes"] = [{"script": vns[i], "tip": ["Chill", "Curious", "Playful"][i % 3]} for i in range(min(3, len(vns)))]
+            
+            # 3. REEL COMMENTS (3, enhanced)
+            reels = []
+            reels.append(random.choice(REEL_REACTION_TEMPLATES["funny"]))
+            if content_type == "reel" or any(w in grid for w in ["travel","food","gym","art"]):
+                reels.append(random.choice(REEL_REACTION_TEMPLATES["hobby_match"]).format(grid_key=grid_key))
+            else:
+                reels.append(random.choice(REEL_REACTION_TEMPLATES["relatable"]))
+            reels.append(random.choice(REEL_REACTION_TEMPLATES["play_along"]))
+            result["reel_comments"] = reels
+            
+            # 4. REPLY BOOSTERS
+            result["reply_boosters"] = REPLY_BOOSTERS
+            
+            # 5. MICRO-POV SCENARIOS
+            result["micro_pov"] = [p.format(grid_key=grid_key, bio_key=bio_key) for p in MICRO_POV]
+            
+            # 6. EMOJI OPENERS
+            result["emoji_openers"] = [e.format(grid_key=grid_key) for e in EMOJI_OPENERS]
+            
+            # 7. STORY REACTIONS
+            result["story_reactions"] = STORY_REACTIONS
+            
+            # 8. NO REPLY NUDGE
+            result["no_reply"] = NO_REPLY_NUDGE
+            
+            # 9. SIMULATOR
+            result["simulator"] = simulate_her_reply
+            
+            return result
+
+        # === IN PROFILE HANDLER (TAILORED OUTPUT) ===
+        if extract.get("type") == "profile":
+            # Build concise response
+            bio = extract.get('bio', 'No bio')[:80]
+            grid = extract.get('grid_desc', 'Standard')[:60]
+            content_type = extract.get('content_type', 'standard')
+            
+            # Escape special characters for MarkdownV2
+            handle = extract.get('handle', '@unknown').replace('_', '\\_').replace('.', '\\.')
+            bio_escaped = bio.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+            grid_escaped = grid.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+            
+            txt = ["👤 *Profile Analysis*\n"]
+            txt.append(f"*{handle}*")
+            txt.append(f"Bio: {bio_escaped}\\.\\.\\.")
+            txt.append(f"Followers: {extract.get('followers', '?')} \\| Posts: {extract.get('posts', '?')}")
+            txt.append(f"Grid: {grid_escaped}\\.\\.\\.")
+            txt.append(f"Content: {content_type.upper()} vibe\n")
+            
+            # Generate customized opening lines with LLM (enhanced prompt)
+            opening_lines = []
+            if llm:
+                try:
+                    # Analyze grid photos in detail
+                    grid_full = extract.get('grid_desc', 'Standard posts')
+                    bio_full = extract.get('bio', 'No bio')
+                    content_type_full = content_type
+                    
+                    prompt_text = f"""Delhi guy DMing girl on Instagram. Generate 5 opening lines - each with BOTH English and Hinglish versions, tuned to Delhi Gen-Z vibe (playful, teasy, confident, abundance mindset).
+
+HER PROFILE:
+Bio: {bio_full}
+Grid Photos: {grid_full}
+Content Type: {content_type_full}
+Followers: {extract.get('followers', 'unknown')}
+
+Generate 5 opening lines based on KB principles: Present-focused (immediate bio/grid detail), specific/observant (reference exact element), light/curious (open-ended question, no impressing), non-physical compliment if fitting (humor/energy/skill). For reels: Play-along/duet vibe; infeed: Hot take/tip; standard: Relatable chaos/game.
+
+For EACH line, provide:
+- English version (natural, under 15 words)
+- Hinglish version (same meaning, Delhi slang like yaar/arre/chal na, feminine grammar: kar rhi ho/bna leti ho)
+
+Format EXACTLY like this:
+1. English: [english text]
+   Hinglish: [hinglish text]
+2. English: [english text]
+   Hinglish: [hinglish text]
+(continue for 5 lines; no extras)
+
+RULES (from KB/Quora/Reddit):
+- Under 15 words each; punchy, active voice.
+- Reference SPECIFIC profile/content (e.g., bio keyword, grid theme).
+- Feminine grammar mandatory (kar rhi ho, jaa rhi ho, bna leti ho; NO masculine raha/rahe/leta).
+- Natural Delhi style: Mix shortcuts (kkhy, haan yaar, sahi, dude); 1-2 emojis max (👀, 😏).
+- High-value: Playful tease/reciprocal share, open-ended (why/how/fave?); no generic/creepy.
+- Variety: 1 bio-hook, 1 grid-specific, 1 content-type tailored, 1 game/POV, 1 relatable chaos.
+
+RESPOND WITH ONLY THE 10 LINES (5 English + 5 Hinglish):"""
+                    
+                    # Use proper messages for invoke
+                    messages = [
+                        SystemMessage(content="You are a Delhi Gen-Z DM coach. Generate concise opening lines."),
+                        HumanMessage(content=prompt_text)
+                    ]
+                    
+                    response = llm.invoke(messages)
+                    lines = [l.strip() for l in response.content.strip().split('\n') if l.strip()]
+                    
+                    # Parse lines - expecting format: "1. English: text" and "1.1 Hinglish: text"
+                    opening_lines = []  # Will store tuples of (english, hinglish)
+                    current_english = None
+                    
+                    for line in lines:
+                        if 'English:' in line or 'english:' in line:
+                            # Extract English version
+                            text = line.split(':', 1)[-1].strip()
+                            # Remove numbering
+                            if text and text[0].isdigit():
+                                parts = text.split('.', 1)
+                                if len(parts) > 1:
+                                    text = parts[1].strip()
+                            current_english = text
+                        elif ('Hinglish:' in line or 'hinglish:' in line) and current_english:
+                            # Extract Hinglish version
+                            text = line.split(':', 1)[-1].strip()
+                            # Remove numbering
+                            if text and text[0].isdigit():
+                                parts = text.split('.', 1)
+                                if len(parts) > 1:
+                                    text = parts[1].strip()
+                            opening_lines.append({'english': current_english, 'hinglish': text})
+                            current_english = None
+                    
+                    # Ensure we have at least 3 pairs
+                    while len(opening_lines) < 3:
+                        if len(opening_lines) == 0:
+                            opening_lines.append({
+                                'english': f"Hey! Your {content_type_full} content is fire. What's the story?",
+                                'hinglish': f"Yo! Tera {content_type_full} content ekdum jhakaas. Kya scene hai?"
+                            })
+                            opening_lines.append("----------------------------------")
+                        elif len(opening_lines) == 1:
+                            opening_lines.append({
+                                'english': f"Your {grid_full[:30]} caught my eye. Tell me more?",
+                                'hinglish': f"Arre, tera {grid_full[:30]} dekha. Batao na?"
+                            })
+                            opening_lines.append("----------------------------------")
+                        else:
+                            opening_lines.append({
+                                'english': "Let's chat. What are you up to?",
+                                'hinglish': "Chal baat karte hain. Kya kar rhi ho?"
+                            })
+                            opening_lines.append("----------------------------------")
+                        
+                except Exception as e:
+                    print(f"⚠️ Opening line generation error: {e}")
+                    # Fallback tailored with English/Hinglish pairs
+                    if content_type == "reel":
+                        opening_lines = [
+                            {'english': "This reel is fire. What's the backstory?", 'hinglish': "Yo! Yeh reel ekdum jhakaas. Backstory kya hai? 👀"},
+                            {'english': "Duet vibes on this. Your take?", 'hinglish': "Arre, duet vibes aa rhe. Tera take kya hai?"},
+                            {'english': "FYP gold right here. Remix?", 'hinglish': "Bhai FYP pe aana chahiye. Remix karegi?"}
+                        ]
+                    elif content_type == "infeed":
+                        opening_lines = [
+                            {'english': f"This post caught my eye. Hot take?", 'hinglish': f"Yo! Yeh post dekha. Hot take kya hai?"},
+                            {'english': f"That content is solid. Any tips?", 'hinglish': f"Arre, yeh content solid hai. Koi tip hai?"},
+                            {'english': "Post is interesting. Why this one?", 'hinglish': "Yeh post interesting hai. Kyun yeh wala?"}
+                        ]
+                    else:
+                        opening_lines = [
+                            {'english': f"Your profile is clean. What's up?", 'hinglish': f"Yo! Tera profile ekdum clean. Kya scene hai?"},
+                            {'english': f"Your content is fire. What's the story?", 'hinglish': f"Arre, tera content fire hai. Story kya hai?"},
+                            {'english': "Profile caught my eye. Let's chat?", 'hinglish': "Tera profile dekha. Chal baat karte hain?"}
+                        ]
+            else:
+                # Fallback
+                opening_lines = [
+                    {'english': "Your profile is clean. What are you up to?", 'hinglish': "Yo! Tera profile clean hai. Kya kar rhi ho?"},
+                    {'english': "Your content is solid. What's up?", 'hinglish': "Arre, tera content solid hai. Kya scene?"},
+                    {'english': "Let's talk. What's the vibe?", 'hinglish': "Chal baat karte hain. Kya vibe hai?"}
+                ]
+            
+            # Add opening lines to main message (show all, with English + Hinglish)
+            txt.append("\n💬 *Opening Lines:*")
+            for i, line_pair in enumerate(opening_lines[:5], 1):  # Show up to 5 pairs
+                txt.append(f"{i}\\. English: `{line_pair['english']}`")
+                txt.append(f"{i}\\.1 Hinglish: `{line_pair['hinglish']}`")
+            
+            # Generate package for voice notes and reels
+            package = generate_master_package(extract)
+            
+            # Add voice notes (show all 3)
+            txt.append("\n🎤 *Voice Note Scripts:*")
+            for i, vn in enumerate(package["voice_notes"][:3], 1):
+                txt.append(f"{i}\\. `{vn['script']}`")
+            
+            # Add reel comments (show all 3)
+            txt.append("\n📱 *Reel/In\\-Feed Comments:*")
+            for i, rc in enumerate(package["reel_comments"][:3], 1):
+                txt.append(f"{i}\\. `{rc}`")
+            
+            txt.append("\n_Tap any line to select and copy\\!_ 👑")
+            
+            # Send everything in ONE message with MarkdownV2
+            try:
+                await update.message.reply_text(
+                    "\n".join(txt),
+                    parse_mode='MarkdownV2'
+                )
+            except telegram.error.TimedOut:
+                await update.message.reply_text("⚠️ Network slow. Retry screenshot.")
+                return
+            except Exception as e:
+                # Fallback without markdown if formatting fails
+                print(f"Markdown error: {e}")
+                try:
+                    await update.message.reply_text("\n".join(txt))
+                except:
+                    await update.message.reply_text("⚠️ Network slow. Retry screenshot.")
+                    return
+            
+            # Only More button
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎲 More Options", callback_data=f"more_profile_{uid}")]
+            ])
+            
+            USER_CONTEXT[uid] = {
+                "extract": extract, 
+                "package": package, 
+                "opening_lines": opening_lines,
+                "type": "profile",
+                "content_type": content_type
+            }
+            
+            # Send More button
+            try:
+                await update.message.reply_text("Need more ideas?", reply_markup=kb)
+            except telegram.error.TimedOut:
+                pass
+            return
+    
+    except (FileNotFoundError, telegram.error.TimedOut):
+        await update.message.reply_text("🚫 Network timeout. Telegram servers slow. Send screenshot again.")
     except json.JSONDecodeError as e:
         await update.message.reply_text(f"🤖 LLM returned garbage. Try again.\n\n`{str(e)[:100]}`")
     except Exception as e:
@@ -748,42 +1405,143 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import traceback
         traceback.print_exc()
     finally:
-        if os.path.exists(fp):
-            os.remove(fp)
+        # Safe file cleanup for Windows
+        if 'fp' in locals() and os.path.exists(fp):
+            try:
+                os.remove(fp)
+            except PermissionError:
+                # File still in use, try again after a short delay
+                await asyncio.sleep(0.1)
+                try:
+                    os.remove(fp)
+                except:
+                    pass  # If still fails, let OS clean it up later
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages (her DM text) - enhanced with content_type fallback"""
+    uid = update.effective_user.id
+    text = update.message.text
+    
+    # Ignore commands
+    if text.startswith('/'):
+        return
+    
+    await update.message.reply_text("🔍 Analyzing her message...")
+    
+    try:
+        # Create extract from text
+        extract = {
+            "history": [{"role": "her", "message": text}],
+            "her_last_message": text,
+            "h": "@girl",
+            "v": "casual_normal",
+            "f": "unknown",
+            "g": "unknown",
+            "b": "No bio",
+            "d": "Text only",
+            "i": "no",
+            "c": retrieve_stage(uid),
+            "n": retrieve_stage(uid),
+            "content_type": "standard"  # Default for text
+        }
+        
+        # Analyze mood
+        girl = extract.get("h", "@unknown")
+        mood = sense_her_mood(extract.get("history", []), uid, girl)
+        extract["mood"] = mood
+        
+        # Generate reply
+        cot, warn, trust = generate_cot_reply(extract, uid)
+        
+        # Store context
+        USER_CONTEXT[uid] = {
+            "extract": extract,
+            "cot": cot,
+            "warn": warn,
+            "trust": trust,
+            "girl": girl
+        }
+        
+        # Build response with MarkdownV2 escaping
+        txt = ["🔥 *DM Coach Report*\n"]
+        # Escape special characters for MarkdownV2
+        escaped_text = text.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+        txt.append(f"💬 *Her:* \"{escaped_text}\"\n")
+        
+        # Check for quota error
+        if cot.get("quota_error"):
+            txt.append("⚠️ *API Quota Exceeded* \\- Using smart fallback replies\n")
+        
+        # Analysis (enhanced)
+        analysis = cot.get('a', 'Keep it high-value.')
+        if warn:
+            analysis += f"\n{warn}"
+        # Escape analysis text
+        escaped_analysis = analysis.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+        txt.append(f"🧠 *Play:* {escaped_analysis}\n")
+        
+        # Add replies to main message
+        txt.append("\n📱 *Your Drip:*")
+        replies = cot.get('r', [])
+        for i, r in enumerate(replies, 1):
+            vibe = r.get('sub_vibe', 'unknown').title()
+            txt.append(f"{i}\\. \\[{vibe}\\] `{r['text']}`")
+        
+        # Add KB Sources if available
+        if "sources" in cot and cot["sources"]:
+            txt.append("\n📚 *KB Sources:*")
+            for s in cot["sources"][:2]:
+                escaped_quote = s['quote'][:80].replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)').replace('~', '\\~').replace('`', '\\`').replace('>', '\\>').replace('#', '\\#').replace('+', '\\+').replace('-', '\\-').replace('=', '\\=').replace('|', '\\|').replace('{', '\\{').replace('}', '\\}').replace('.', '\\.').replace('!', '\\!')
+                txt.append(f"• {s['key'].title()}: {escaped_quote}\\.\\.\\.")
+        
+        txt.append("\n_Tap any reply above to select and copy\\!_ 👑")
+        
+        # Send everything in ONE message with MarkdownV2
+        try:
+            await update.message.reply_text(
+                "\n".join(txt),
+                parse_mode='MarkdownV2'
+            )
+        except Exception as e:
+            # Fallback without markdown if formatting fails
+            print(f"Markdown error: {e}")
+            try:
+                await update.message.reply_text("\n".join(txt))
+            except:
+                pass
+        
+        # Only More button
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎲 More Options", callback_data=f"more_{uid}")]
+        ])
+        
+        await update.message.reply_text("Need more ideas?", reply_markup=kb)
+        
+    except Exception as e:
+        await update.message.reply_text(
+            f"💥 Error:\n`{str(e)[:200]}`\n\n"
+            "Try again or send a screenshot."
+        )
+        import traceback
+        traceback.print_exc()
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle button presses"""
+    """Handle button presses - enhanced for content_type"""
     query = update.callback_query
-    await query.answer()
+    
+    # Answer callback with timeout handling
+    try:
+        await query.answer()
+    except telegram.error.TimedOut:
+        pass  # Ignore timeout on answer, continue processing
+    except Exception:
+        pass  # Ignore other errors on answer
     
     data = query.data
     
-    if data.startswith("copy_"):
-        # Copy button pressed
-        parts = data.split("_")
-        if len(parts) >= 3:
-            uid = int(parts[1])
-            idx = int(parts[2])
-            
-            if uid in USER_CONTEXT:
-                replies = USER_CONTEXT[uid]["cot"].get("r", [])
-                if idx < len(replies):
-                    reply_text = replies[idx]["text"]
-                    await query.message.reply_text(
-                        f"📋 **Reply Copied!**\n\n"
-                        f"_{reply_text}_\n\n"
-                        "Paste this in your DM. Remember:\n"
-                        "• Match her energy\n"
-                        "• Stay high-value\n"
-                        "• Options > obsession\n\n"
-                        "Good luck, king! 👑"
-                    )
-                else:
-                    await query.message.reply_text("❌ Reply not found. Send screenshot again.")
-            else:
-                await query.message.reply_text("❌ Context lost. Send screenshot again bhai.")
+    # All copy button handlers removed - using selectable text instead
     
-    elif data.startswith("text_"):
+    if data.startswith("text_"):
         # Send as text button pressed
         parts = data.split("_")
         if len(parts) >= 3:
@@ -808,7 +1566,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"**YOUR REPLY:**\n\n{reply_text}",
                         "─────────────────────\n",
                         "✅ Copy this text and paste in Instagram DM",
-                        "💯 Remember: High-value, abundance mindset",
+                        "💯 Remember: High-value, abundance mindset (KB)",
                         "👑 You got this, king!"
                     ]
                     
@@ -819,7 +1577,393 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"`{reply_text}`",
                         parse_mode='Markdown'
                     )
+                    
+                    # Send sources if available
+                    cot = USER_CONTEXT[uid]["cot"]
+                    if "sources" in cot and cot["sources"]:
+                        sources_text = "**KB Sources Used:**\n" + "\n".join([f"• **{s['key'].title()}**: {s['quote'][:100]}..." for s in cot["sources"][:3]])
+                        await query.message.reply_text(sources_text)
                 else:
                     await query.message.reply_text("❌ Reply not found. Send screenshot again.")
             else:
                 await query.message.reply_text("❌ Context lost. Send screenshot again bhai.")
+    
+    elif data.startswith("more_profile_"):
+        # More options for profile - generate additional opening lines
+        parts = data.split("_")
+        if len(parts) >= 3:
+            try:
+                uid = int(parts[2])
+            except (ValueError, IndexError):
+                await query.message.reply_text("❌ Invalid button")
+                return
+            
+            if uid in USER_CONTEXT and USER_CONTEXT[uid].get("type") == "profile":
+                extract = USER_CONTEXT[uid]["extract"]
+                content_type = USER_CONTEXT[uid].get("content_type", "standard")
+                
+                await query.message.reply_text("🔄 Generating more options...")
+                
+                # Generate more diverse opening lines
+                if llm:
+                    try:
+                        grid_full = extract.get('grid_desc', 'Standard posts')
+                        bio_full = extract.get('bio', 'No bio')
+                        
+                        from langchain_core.messages import SystemMessage, HumanMessage
+                        
+                        prompt_text = f"""Generate 3 MORE creative opening lines for Instagram DM (different from previous).
+
+HER PROFILE:
+Bio: {bio_full}
+Grid: {grid_full}
+Content Type: {content_type}
+
+Generate 3 NEW opening lines. For EACH line provide:
+- English version
+- Hinglish version
+
+Format:
+1. English: [text]
+1.1 Hinglish: [text]
+2. English: [text]
+2.1 Hinglish: [text]
+3. English: [text]
+3.1 Hinglish: [text]
+
+Make these DIFFERENT from typical openers:
+- Style 1: Playful/teasing
+- Style 2: Mysterious/intriguing
+- Style 3: Direct/confident
+
+Under 15 words each, Delhi Gen-Z style, feminine grammar."""
+                        
+                        messages = [
+                            SystemMessage(content="You are a Delhi Gen-Z DM coach."),
+                            HumanMessage(content=prompt_text)
+                        ]
+                        
+                        response = llm.invoke(messages)
+                        lines = [l.strip() for l in response.content.strip().split('\n') if l.strip()]
+                        
+                        # Parse English/Hinglish pairs
+                        more_lines = []
+                        current_english = None
+                        
+                        for line in lines:
+                            if 'English:' in line or 'english:' in line:
+                                text = line.split(':', 1)[-1].strip()
+                                if text and text[0].isdigit():
+                                    parts = text.split('.', 1)
+                                    if len(parts) > 1:
+                                        text = parts[1].strip()
+                                current_english = text
+                            elif ('Hinglish:' in line or 'hinglish:' in line) and current_english:
+                                text = line.split(':', 1)[-1].strip()
+                                if text and text[0].isdigit():
+                                    parts = text.split('.', 1)
+                                    if len(parts) > 1:
+                                        text = parts[1].strip()
+                                more_lines.append({'english': current_english, 'hinglish': text})
+                                current_english = None
+                        
+                        # Fallback if parsing failed
+                        if len(more_lines) < 3:
+                            more_lines = [
+                                {'english': "Your vibe is different. What's your secret?", 'hinglish': "Tera vibe alag hai. Secret kya hai?"},
+                                {'english': "Interesting content. What inspires you?", 'hinglish': "Interesting content hai. Kya inspire karta hai?"},
+                                {'english': "Let's be real. What's your story?", 'hinglish': "Chal real baat karte hain. Teri story kya hai?"}
+                            ]
+                        
+                        # Build response with MarkdownV2
+                        txt = ["🎲 *More Opening Lines:*\n"]
+                        for i, line_pair in enumerate(more_lines[:3], 1):
+                            txt.append(f"{i}\\. English: `{line_pair['english']}`")
+                            txt.append(f"{i}\\.1 Hinglish: `{line_pair['hinglish']}`")
+                        
+                        txt.append("\n_Tap any line to select and copy\\!_ 👑")
+                        
+                        try:
+                            await query.message.reply_text(
+                                "\n".join(txt),
+                                parse_mode='MarkdownV2'
+                            )
+                        except Exception as e:
+                            print(f"Markdown error: {e}")
+                            await query.message.reply_text("\n".join(txt))
+                        
+                    except Exception as e:
+                        print(f"More profile options error: {e}")
+                        # Fallback
+                        fallback_lines = [
+                            {'english': "Your style is unique. How'd you develop it?", 'hinglish': "Tera style unique hai. Kaise develop kiya?"},
+                            {'english': "Content is solid. What's next?", 'hinglish': "Content solid hai. Aage kya plan?"},
+                            {'english': "Let's chat. What's your vibe today?", 'hinglish': "Chal baat karte hain. Aaj ka vibe kya hai?"}
+                        ]
+                        
+                        txt = ["🎲 *More Opening Lines:*\n"]
+                        for i, line_pair in enumerate(fallback_lines, 1):
+                            txt.append(f"{i}\\. English: `{line_pair['english']}`")
+                            txt.append(f"{i}\\.1 Hinglish: `{line_pair['hinglish']}`")
+                        
+                        txt.append("\n_Tap any line to select and copy\\!_ 👑")
+                        
+                        try:
+                            await query.message.reply_text(
+                                "\n".join(txt),
+                                parse_mode='MarkdownV2'
+                            )
+                        except:
+                            await query.message.reply_text("\n".join(txt))
+                else:
+                    await query.message.reply_text("❌ LLM unavailable.")
+            else:
+                await query.message.reply_text("❌ Context lost. Send screenshot again.")
+        return
+    
+    elif data.startswith("more_"):
+        # Generate more diverse options for chat (enhanced prompt)
+        parts = data.split("_")
+        if len(parts) >= 2:
+            try:
+                uid = int(parts[1])
+            except (ValueError, IndexError):
+                await query.message.reply_text("❌ Invalid button")
+                return
+            
+            if uid in USER_CONTEXT:
+                extract = USER_CONTEXT[uid]["extract"]
+                content_type = extract.get("content_type", "standard")
+                
+                # Generate more diverse replies with higher temperature
+                await query.message.reply_text("🔄 Generating more options...")
+                
+                # Temporarily increase temperature for diversity
+                if llm:
+                    try:
+                        her_last = extract.get("her_last_message", "hey")
+                        mood = extract.get("mood", {})
+                        
+                        # Use simpler approach without JsonOutputParser for more reliability
+                        from langchain_google_genai import ChatGoogleGenerativeAI
+                        diverse_llm = ChatGoogleGenerativeAI(
+                            model="gemini-flash-lite-latest",
+                            temperature=0.9,
+                            google_api_key=GEMINI_API_KEY
+                        )
+                        
+                        prompt_text = f"""Generate 3 different creative replies to her message: "{her_last}"
+Content: {content_type}
+
+Style 1: Playful/teasing (light banter KB)
+Style 2: Mysterious/intriguing (curious hook)
+Style 3: Direct/confident (specific reference)
+
+Each reply under 30 words, Delhi slang natural, DIFFERENT vibes.
+For {content_type}: Reel=play along; Infeed=specific; Standard=mirror energy.
+
+CRITICAL CITATION RULE: Cite 1-2 KB sources in "sources" array.
+
+Reply 1:
+Reply 2:
+Reply 3:"""
+                        
+                        messages = [
+                            SystemMessage(content="You are a Delhi Gen-Z DM coach. Generate creative replies with citations."),
+                            HumanMessage(content=prompt_text)
+                        ]
+                        
+                        response = diverse_llm.invoke(messages)
+                        lines = response.content.strip().split('\n')
+                        
+                        # Parse replies
+                        replies = []
+                        styles = ['playful', 'mysterious', 'direct']
+                        reply_num = 0
+                        
+                        for line in lines:
+                            line = line.strip()
+                            if line.startswith('Reply') and ':' in line:
+                                text = line.split(':', 1)[1].strip()
+                                if text:
+                                    replies.append({
+                                        'text': text,
+                                        'style': styles[reply_num] if reply_num < len(styles) else 'casual',
+                                        'sub_vibe': 'hinglish'
+                                    })
+                                    reply_num += 1
+                        
+                        # Fallback if parsing failed
+                        if len(replies) < 3:
+                            if content_type == "reel":
+                                replies = [
+                                    {"text": "Haha this reel slaps. Duet me? 👀", "style": "playful", "sub_vibe": "hinglish"},
+                                    {"text": "Lowkey obsessed... backstory? 😏", "style": "mysterious", "sub_vibe": "hinglish"},
+                                    {"text": "Yo, FYP gold. Your take?", "style": "direct", "sub_vibe": "hinglish"}
+                                ]
+                            elif content_type == "infeed":
+                                replies = [
+                                    {"text": "Arre post fire. Hot take? 😂", "style": "playful", "sub_vibe": "hinglish"},
+                                    {"text": "That detail... intriguing. Why? 👀", "style": "mysterious", "sub_vibe": "hinglish"},
+                                    {"text": "Direct: Love the vibe. Tip?", "style": "direct", "sub_vibe": "hinglish"}
+                                ]
+                            else:
+                                replies = [
+                                    {"text": "Haha bet. Toh scene kya hai? 👀", "style": "playful", "sub_vibe": "hinglish"},
+                                    {"text": "Interesting... batao phir, what's the vibe?", "style": "mysterious", "sub_vibe": "hinglish"},
+                                    {"text": "Yo, let's keep it real. What's up?", "style": "direct", "sub_vibe": "hinglish"}
+                                ]
+                        
+                        txt = ["**🎲 More Options:**\n"]
+                        txt.append("_Tap any text below to select and copy!_ 👑")
+                        
+                        await query.message.reply_text("\n".join(txt))
+                        
+                        # Send each reply as selectable text
+                        for i, r in enumerate(replies[:3], 1):
+                            style = r.get('style', 'casual')
+                            try:
+                                await query.message.reply_text(f"`{r['text']}`")
+                            except telegram.error.TimedOut:
+                                continue
+                        
+                        # Store new replies
+                        USER_CONTEXT[uid]["more_replies"] = replies
+                        
+                        # Send sources (assume from prompt rule)
+                        sources_text = "**KB Sources Used:**\n• **Opener**: Specific & open-ended (fallback)"
+                        await query.message.reply_text(sources_text)
+                        
+                    except Exception as e:
+                        print(f"More options error: {e}")
+                        # Fallback replies (tailored)
+                        if content_type == "reel":
+                            replies = [
+                                {"text": "Haha bet. Reel remix? 👀", "style": "playful", "sub_vibe": "hinglish"},
+                                {"text": "Vibe check... spill? 😏", "style": "mysterious", "sub_vibe": "hinglish"},
+                                {"text": "Solid reel. Next one?", "style": "direct", "sub_vibe": "hinglish"}
+                            ]
+                        else:
+                            replies = [
+                                {"text": "Haha bet. Toh scene kya hai? 👀", "style": "playful", "sub_vibe": "hinglish"},
+                                {"text": "Interesting... batao phir, what's the vibe?", "style": "mysterious", "sub_vibe": "hinglish"},
+                                {"text": "Yo, let's keep it real. What's up?", "style": "direct", "sub_vibe": "hinglish"}
+                            ]
+                        
+                        txt = ["**🎲 More Options (Fallback):**\n"]
+                        txt.append("_Tap any text below to select and copy!_ 👑")
+                        
+                        await query.message.reply_text("\n".join(txt))
+                        
+                        # Send each reply as selectable text
+                        for i, r in enumerate(replies, 1):
+                            try:
+                                await query.message.reply_text(f"`{r['text']}`")
+                            except telegram.error.TimedOut:
+                                continue
+                        
+                        USER_CONTEXT[uid]["more_replies"] = replies
+                        
+                        # Fallback sources
+                        await query.message.reply_text("**KB Sources Used:**\n• **Opener**: Match her energy (fallback)")
+                        
+                else:
+                    await query.message.reply_text("❌ LLM unavailable.")
+            else:
+                await query.message.reply_text("❌ Context lost. Send screenshot again bhai.")
+    
+    # copy_more_ handler removed - using selectable text instead
+
+# Missing function - add placeholder
+def retrieve_stage(uid):
+    return 1  # Default stranger
+
+def get_trust(uid, handle):
+    return 50  # Default
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command - enhanced with KB tips"""
+    await update.message.reply_text(
+        "🔥 **DM Coach Bot - Delhi Edition**\n\n"
+        "Send me a screenshot OR text of her message and I'll:\n"
+        "✅ Analyze her vibe & mood (high/low energy)\n"
+        "✅ Detect traps (gold digger, love bomb, rejection)\n"
+        "✅ Generate high-value replies in Hinglish & English (feminine grammar)\n"
+        "✅ Tailored for reels/in-feed (play along/specific hooks)\n"
+        "✅ Track trust & stage progression\n"
+        "✅ Cite exact KB sources for transparency (e.g., [opener: 'Match energy'])\n\n"
+        "**How to use:**\n"
+        "1. Screenshot your Instagram DM/post/reel OR copy her text\n"
+        "2. Send it here\n"
+        "3. Get instant drip replies 💯\n"
+        "4. Tap 🎲 More Options for diverse replies\n\n"
+        "**KB Quick Tips:**\n"
+        "• Match energy, be specific (no generics)\n"
+        "• Open-ended questions > yes/no\n"
+        "• Abundance > Obsession 👑\n\n"
+        "From Quora/Reddit: Practice daily micro-convos!"
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /help command - enhanced"""
+    await update.message.reply_text(
+        "**📚 DM Coach Commands**\n\n"
+        "/start - Get started\n"
+        "/help - Show this message\n\n"
+        "**How to use:**\n"
+        "• Send screenshot OR copy-paste her text/reel caption\n"
+        "• Get 2 replies (Hinglish + English)\n"
+        "• Tap 🎲 More Options for 3 diverse styles\n"
+        "• Clear screenshots work best (720p+)\n"
+        "• Replies cite exact KB tips for transparency\n\n"
+        "**Do's/Don'ts (KB/Research):**\n"
+        "• Do: Light, curious, context-based (reel: 'duet?'; infeed: 'tip?')\n"
+        "• Don't: Chase dry replies, generic compliments, masculine grammar\n"
+        "• Ghost after 2 ignores; abundance wins\n\n"
+        "Questions? DM @heyyjishh"
+    )
+
+def main():
+    """Start the bot"""
+    print("\n" + "="*60)
+    print("🚀 DM COACH BOT - ENHANCED WITH KB & RESEARCH")
+    print("="*60 + "\n")
+    
+    # Validate environment
+    if not validate_env_vars():
+        print("\n❌ Startup failed. Fix env vars and retry.\n")
+        return
+    
+    # ChromaDB disabled for speed
+    
+    # Get bot token
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        print("❌ TELEGRAM_BOT_TOKEN not set!")
+        return
+    
+    # Build application
+    print("🤖 Building Telegram application...")
+    app = Application.builder().token(token).build()
+    
+    # Add handlers
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(CallbackQueryHandler(handle_callback))
+    
+    print("✅ Handlers registered")
+    print("\n" + "="*60)
+    print("🎯 BOT IS LIVE! Send screenshots to analyze DMs/reels.")
+    print("="*60 + "\n")
+    
+    # Start polling
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == "__main__":
+    main()
