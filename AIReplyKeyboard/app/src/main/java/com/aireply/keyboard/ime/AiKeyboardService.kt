@@ -146,6 +146,8 @@ class AiKeyboardService : InputMethodService() {
     /** Debug test hooks — driven by TestHookReceiver in debug builds only. */
     fun debugGenerate() = generateReplies()
 
+    fun debugCapture() = startLiveCapture()
+
     fun debugInsert(index: Int) {
         val text = lastReplies.getOrElse(index) { return }
         insertSuggestion(text, index)
@@ -215,6 +217,14 @@ class AiKeyboardService : InputMethodService() {
             setOnClickListener { switchToNextInputMethod(false) }
         })
         toneRow.addView(Button(this).apply {
+            text = "📸"
+            textSize = 16f
+            background = keyBackground(SPECIAL_BG)
+            setTextColor(TEXT)
+            layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
+            setOnClickListener { startLiveCapture() }
+        })
+        toneRow.addView(Button(this).apply {
             text = "✎"
             textSize = 16f
             background = keyBackground(SPECIAL_BG)
@@ -278,6 +288,7 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun resetSuggestions(placeholder: String? = null) {
+        if (!::suggestionButtons.isInitialized) return
         val hints = placeholder?.let { listOf(it, it, it) } ?: listOf("Tap ✦ for reply 1", "Tap ✦ for reply 2", "Tap ✦ for reply 3")
         suggestionButtons.forEachIndexed { i, b -> b.text = hints[i] }
     }
@@ -320,9 +331,24 @@ class AiKeyboardService : InputMethodService() {
         }
     }
 
+    /** 📸 Live capture: consent dialog → one-shot screen grab → ✦ analyzes image + text. */
+    private fun startLiveCapture() {
+        val pkg = ChatStore.packageName
+        if (pkg.isNotEmpty() && Prefs.excludedApps(this).any { it.equals(pkg, ignoreCase = true) }) {
+            Toast.makeText(this, "Screen capture is disabled for this app (privacy)", Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivity(
+            android.content.Intent(this, com.aireply.keyboard.ui.CaptureConsentActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+
     private fun generateReplies() {
         val snapshot = ChatStore.latestText
-        if (snapshot.isEmpty()) {
+        val image = ChatStore.latestImage
+            ?.takeIf { System.currentTimeMillis() - ChatStore.latestImageAt < 120_000 }
+        if (snapshot.isEmpty() && image == null) {
             Toast.makeText(this, "No chat text captured yet — make sure Accessibility is enabled for AI Reply.", Toast.LENGTH_LONG).show()
             return
         }
@@ -331,23 +357,52 @@ class AiKeyboardService : InputMethodService() {
         // Tapping ✦ again on the same screen = regenerate: ask for different replies.
         val avoid = if (snapshot == lastSnapshot) lastReplies else emptyList()
         lastSnapshot = snapshot
-        LlmClient.generate(this, tone, snapshot, avoid) { result ->
+        val done: (Result<Pair<String?, List<String>>>) -> Unit = { result ->
             result.fold(
-                onSuccess = { replies ->
+                onSuccess = { (detected, replies) ->
                     lastReplies = replies
-                    suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
+                    if (::suggestionButtons.isInitialized) {
+                        suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
+                    }
+                    detected?.let {
+                        Toast.makeText(this, "Analyzed: $it", Toast.LENGTH_SHORT).show()
+                    }
                 },
-                onFailure = {
+                onFailure = { e ->
                     lastReplies = emptyList()
-                    val offline = OfflineFallback.suggest(tone, read.mood, Prefs.bilingual(this))
-                    suggestionButtons.forEachIndexed { i, b -> b.text = offline.getOrElse(i) { "—" } }
+                    if (::suggestionButtons.isInitialized) {
+                        val offline = OfflineFallback.suggest(tone, read.mood, Prefs.bilingual(this))
+                        suggestionButtons.forEachIndexed { i, b -> b.text = offline.getOrElse(i) { "—" } }
+                    }
                     Toast.makeText(
                         this,
-                        "Offline suggestions — API unreachable. Check settings/connection.",
+                        e.message?.takeIf { !it.contains("API error") } ?: "Offline suggestions — API unreachable. Check settings/connection.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
             )
+        }
+        if (image != null) {
+            LlmClient.generateFromLiveScreen(this, tone, image, snapshot.ifEmpty { "(no readable text)" }, avoid, done)
+        } else {
+            LlmClient.generate(this, tone, snapshot, avoid) { result ->
+                result.fold(
+                    onSuccess = { replies ->
+                        lastReplies = replies
+                        suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
+                    },
+                    onFailure = {
+                        lastReplies = emptyList()
+                        val offline = OfflineFallback.suggest(tone, read.mood, Prefs.bilingual(this))
+                        suggestionButtons.forEachIndexed { i, b -> b.text = offline.getOrElse(i) { "—" } }
+                        Toast.makeText(
+                            this,
+                            "Offline suggestions — API unreachable. Check settings/connection.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                )
+            }
         }
         read.trap?.let { trap ->
             Toast.makeText(this, "⚠️ $trap: ${read.trapAdvice}", Toast.LENGTH_LONG).show()

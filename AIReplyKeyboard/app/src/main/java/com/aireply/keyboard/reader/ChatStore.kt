@@ -11,16 +11,30 @@ object ChatStore {
     @Volatile var updatedAt: Long = 0
         private set
 
+    /** Base64 JPEG of the last live screen capture (📸 button), for vision-based suggestions. */
+    @Volatile var latestImage: String? = null
+        private set
+
+    @Volatile var latestImageAt: Long = 0
+        private set
+
     fun update(pkg: String, text: String) {
         latestText = text
         packageName = pkg
         updatedAt = System.currentTimeMillis()
     }
 
+    fun updateImage(base64: String) {
+        latestImage = base64
+        latestImageAt = System.currentTimeMillis()
+    }
+
     fun clear() {
         latestText = ""
         packageName = ""
         updatedAt = 0
+        latestImage = null
+        latestImageAt = 0
     }
 
     val isFresh: Boolean

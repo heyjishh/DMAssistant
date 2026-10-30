@@ -193,6 +193,56 @@ object LlmClient {
         "Be specific to the conversation, kind but honest. Never comment on anyone's " +
         "appearance. If there is too little text to judge, say so in OVERALL."
 
+    /** Live-mode: user is browsing a social/dating app; analyze captured screen + visible text. */
+    fun generateFromLiveScreen(
+        context: Context,
+        tone: Tone,
+        imageBase64: String,
+        screenText: String,
+        avoid: List<String> = emptyList(),
+        onResult: (Result<Pair<String?, List<String>>>) -> Unit
+    ) {
+        val sys = "You are a flirting/texting assistant with live screen access. The user is browsing a " +
+            "social or dating app (Instagram feed/reel, Hinge, Tinder...). The screenshot shows what they " +
+            "see — a profile, post or reel; ignore any on-screen keyboard UI at the bottom of the image. " +
+            "On-screen text extracted separately may include bio, caption, username or prompts. " +
+            "First line of output must be exactly: TYPE: PROFILE, CHAT, REEL or INFEED. " +
+            "Then write exactly 3 short openers or replies the user could send, referencing specific " +
+            "visible details (bio text, caption, image content) rather than generic greetings. " +
+            "Style: ${tone.instruction}.${styleLine(context)} " +
+            "Match the language of the screen. Do not number or quote; output exactly " +
+            "reply1 ||| reply2 ||| reply3 on one line, always 3 even if short." +
+            (if (avoid.isEmpty()) "" else " The user already saw these and tapped again — offer clearly different ones:\n" +
+                avoid.joinToString("\n") { "- $it" })
+
+        val read = MoodSensor.read(screenText)
+        val moodContext = "Context read: mood \"${read.mood}\". " + MoodSensor.moodAdvice(read.mood) +
+            (read.trapAdvice?.let { " Warning: $it" } ?: "")
+
+        val body = JSONObject().apply {
+            put("model", Prefs.visionModel(context))
+            put("max_tokens", 400)
+            put("temperature", 0.9)
+            put("messages", JSONArray().apply {
+                put(JSONObject().put("role", "system").put("content", sys))
+                put(JSONObject().put("role", "user").put("content", JSONArray().apply {
+                    put(JSONObject().put("type", "text")
+                        .put("text", "On-screen text:\n${screenText.take(2000)}\n\n$moodContext"))
+                    put(JSONObject().put("type", "image_url")
+                        .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$imageBase64")))
+                }))
+            })
+        }
+        postChat(context, body) { result -> result.fold(
+            onSuccess = { raw ->
+                val detected = Regex("TYPE:\\s*(\\w+)", RegexOption.IGNORE_CASE).find(raw)?.groupValues?.get(1)?.uppercase()
+                val cleaned = raw.replace(Regex("TYPE:\\s*\\w+", RegexOption.IGNORE_CASE), "").trim()
+                main.post { onResult(Result.success(Pair(detected, parseReplies(cleaned)))) }
+            },
+            onFailure = { e -> main.post { onResult(Result.failure(e)) } }
+        ) }
+    }
+
     private fun postChat(context: Context, body: JSONObject, done: (Result<String>) -> Unit) {
         val builder = Request.Builder()
             .url("${Prefs.baseUrl(context)}/chat/completions")
@@ -210,6 +260,7 @@ object LlmClient {
                 val result = runCatching {
                     val text = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
+                        android.util.Log.e("LlmClient", "API error ${response.code}: ${text.take(500)}")
                         throw IOException("API error ${response.code}: ${text.take(300)}")
                     }
                     val content = JSONObject(text)

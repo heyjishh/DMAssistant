@@ -23,8 +23,10 @@ class TestHookReceiver : BroadcastReceiver() {
             "config" -> {
                 val preset = ProviderPresets.all.first { it.label.contains("web2api") }
                 Prefs.save(context, preset.baseUrl ?: "", "test-key", preset.textModel ?: "", Tone.CASUAL)
+                Prefs.saveAdvanced(context, preset.visionModel ?: "", "")
             }
             "generate" -> service.debugGenerate()
+            "capture" -> service.debugCapture()
             "insert" -> service.debugInsert(intent.getIntExtra("index", 0))
         }
     }
