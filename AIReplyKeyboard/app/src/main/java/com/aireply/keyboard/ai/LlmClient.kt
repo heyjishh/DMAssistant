@@ -16,13 +16,16 @@ import java.util.concurrent.TimeUnit
 
 object LlmClient {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .build()
+    // Lazy so unit tests can use the pure functions without touching Android stubs.
+    private val client: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
 
-    private val main = Handler(Looper.getMainLooper())
+    private val main: Handler by lazy { Handler(Looper.getMainLooper()) }
     private val json = "application/json; charset=utf-8".toMediaType()
 
     private fun styleLine(context: Context): String {
@@ -42,7 +45,8 @@ object LlmClient {
             "${tone.instruction}.${styleLine(context)}$bilingualLine " +
             "Rules: match the language of the conversation; keep each reply 1-2 sentences and " +
             "natural for texting; do not number them, do not add quotes or commentary; " +
-            "separate the 3 replies with the exact delimiter ||| and nothing else."
+            "output format is exactly: reply1 ||| reply2 ||| reply3 (all three on a single line, " +
+            "always 3 replies even if short)."
     }
 
     /** Rewrites the user's own draft in the selected tone. */
@@ -208,21 +212,31 @@ object LlmClient {
                     if (!response.isSuccessful) {
                         throw IOException("API error ${response.code}: ${text.take(300)}")
                     }
-                    JSONObject(text)
+                    val content = JSONObject(text)
                         .getJSONArray("choices").getJSONObject(0)
-                        .getJSONObject("message").getString("content")
+                        .getJSONObject("message").optString("content")
+                    if (content.isBlank()) {
+                        throw IOException("Provider returned an empty response — try again, or use a different model/provider.")
+                    }
+                    content
                 }
                 main.post { done(result) }
             }
         })
     }
 
-    private fun parseReplies(content: String): List<String> =
-        content.split("|||")
+    /**
+     * Robust reply parsing: models sometimes honor the ||| delimiter and sometimes
+     * return newline-separated lines — handle both, strip list markers and quotes.
+     */
+    internal fun parseReplies(content: String): List<String> {
+        val cleaned = content.trim()
+        val rawParts = if (cleaned.contains("|||")) cleaned.split("|||") else cleaned.lines()
+        return rawParts
             .map { it.trim().trim('"') }
-            // Models sometimes add list markers despite instructions — strip them.
             .map { it.replace(Regex("^\\s*(?:\\d+[.)]|[-•*])\\s*"), "") }
             .filter { it.isNotEmpty() }
             .take(3)
             .ifEmpty { throw IOException("Model returned no usable replies.") }
+    }
 }
