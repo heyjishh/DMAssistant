@@ -43,6 +43,64 @@ class AiKeyboardService : InputMethodService() {
         listOf("✨", "🎉", "🌹", "☕", "🍕", "🎮", "⚽", "🎧", "📸", "💀", "🤡")
     )
 
+    // ── Rizz/Gboard theme ────────────────────────────────────────────────────
+    private val KB_BG = 0xFF0F1013.toInt()
+    private val KEY_BG = 0xFF2D2E33.toInt()
+    private val SPECIAL_BG = 0xFF232428.toInt()
+    private val CHIP_BG = 0xFF1E2025.toInt()
+    private val CHIP_STROKE = 0xFF3A3D45.toInt()
+    private val TEXT = 0xFFF2F3F5.toInt()
+    private val TEXT_DIM = 0xFFA8ABB2.toInt()
+    private val ACCENT1 = 0xFF7C4DFF.toInt()   // violet
+    private val ACCENT2 = 0xFFFF4D8D.toInt()   // pink
+
+    private fun dp(v: Float): Float = v * resources.displayMetrics.density
+
+    /** Rounded key background with press ripple, Gboard-style. */
+    private fun keyBackground(fill: Int): android.graphics.drawable.Drawable {
+        val shape = android.graphics.drawable.GradientDrawable().apply {
+            setColor(fill)
+            cornerRadius = dp(14f)
+        }
+        val mask = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xFFFFFFFF.toInt())
+            cornerRadius = dp(14f)
+        }
+        return android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x30FFFFFF), shape, mask
+        )
+    }
+
+    /** Gradient pill (violet → pink) with ripple — primary actions and accents. */
+    private fun gradientBackground(cornerDp: Float = 14f): android.graphics.drawable.Drawable {
+        val shape = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(ACCENT1, ACCENT2)
+        ).apply { cornerRadius = dp(cornerDp) }
+        val mask = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xFFFFFFFF.toInt())
+            cornerRadius = dp(cornerDp)
+        }
+        return android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x40FFFFFF), shape, mask
+        )
+    }
+
+    private fun outlineBackground(): android.graphics.drawable.Drawable {
+        val shape = android.graphics.drawable.GradientDrawable().apply {
+            setColor(CHIP_BG)
+            cornerRadius = dp(22f)
+            setStroke(dp(1f).toInt(), CHIP_STROKE)
+        }
+        val mask = android.graphics.drawable.GradientDrawable().apply {
+            setColor(0xFFFFFFFF.toInt())
+            cornerRadius = dp(22f)
+        }
+        return android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x28FFFFFF), shape, mask
+        )
+    }
+
     private val accentRows = listOf(
         listOf('q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'),
         listOf('a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'),
@@ -99,21 +157,21 @@ class AiKeyboardService : InputMethodService() {
 
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF191C20.toInt())
-            setPadding(px(6), px(4), px(6), px(6))
+            setBackgroundColor(KB_BG)
+            setPadding(px(4), px(6), px(4), px(8))
         }
 
-        // --- Suggestion row: three AI replies ---
+        // --- Suggestion row: three AI replies (middle one highlighted, Gboard-style) ---
         val suggestionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         suggestionButtons = (0 until 3).map { index ->
             Button(this).apply {
-                background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_suggestion)
-                setTextColor(0xFFE8EAED.toInt())
+                background = if (index == 1) gradientBackground(cornerDp = 20f) else outlineBackground()
+                setTextColor(if (index == 1) 0xFFFFFFFF.toInt() else TEXT)
                 textSize = 13f
                 isAllCaps = false
                 setSingleLine()
                 ellipsize = TextUtils.TruncateAt.END
-                setPadding(px(8), px(6), px(8), px(6))
+                setPadding(px(10), px(6), px(10), px(6))
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, px(40), 1f).apply {
                     setMargins(px(3), 0, px(3), 0)
@@ -144,30 +202,31 @@ class AiKeyboardService : InputMethodService() {
         Tone.entries.forEach { t ->
             chipRow.addView(makeChip(t, px))
         }
+        styleChips()
         chipScroll.addView(chipRow)
         toneRow.addView(chipScroll)
 
         toneRow.addView(Button(this).apply {
             text = "🌐"
             textSize = 16f
-            background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_key_special)
-            setTextColor(0xFFBDC1C6.toInt())
+            background = keyBackground(SPECIAL_BG)
+            setTextColor(TEXT_DIM)
             layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
             setOnClickListener { switchToNextInputMethod(false) }
         })
         toneRow.addView(Button(this).apply {
             text = "✎"
             textSize = 16f
-            background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_key_special)
-            setTextColor(0xFFE8C468.toInt())
+            background = keyBackground(SPECIAL_BG)
+            setTextColor(TEXT)
             layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
             setOnClickListener { rewriteDraft() }
         })
         toneRow.addView(Button(this).apply {
             text = "✦"
             textSize = 18f
-            background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_key_special)
-            setTextColor(0xFF7FE0C8.toInt())
+            background = gradientBackground(cornerDp = 20f)
+            setTextColor(0xFFFFFFFF.toInt())
             layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
             setOnClickListener { generateReplies() }
         })
@@ -186,17 +245,11 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun makeChip(t: Tone, px: (Int) -> Int): Button {
-        val selected = t == tone
         return Button(this).apply {
             text = t.label
             tag = t
             textSize = 12f
             isAllCaps = false
-            background = getDrawableSafe(
-                if (selected) com.aireply.keyboard.R.drawable.bg_chip_selected
-                else com.aireply.keyboard.R.drawable.bg_chip
-            )
-            setTextColor(if (selected) 0xFFFFFFFF.toInt() else 0xFFBDC1C6.toInt())
             setSingleLine()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, px(34)
@@ -213,17 +266,14 @@ class AiKeyboardService : InputMethodService() {
         }
     }
 
-    /** Restyles chips in place — no view rebuild, suggestions stay put. */
+    /** Restyles chips in place — selected one gets the gradient, others stay glassy. */
     private fun styleChips() {
         for (i in 0 until chipRow.childCount) {
             val b = chipRow.getChildAt(i) as? Button ?: continue
             val t = b.tag as? Tone ?: continue
             val selected = t == tone
-            b.background = getDrawableSafe(
-                if (selected) com.aireply.keyboard.R.drawable.bg_chip_selected
-                else com.aireply.keyboard.R.drawable.bg_chip
-            )
-            b.setTextColor(if (selected) 0xFFFFFFFF.toInt() else 0xFFBDC1C6.toInt())
+            b.background = if (selected) gradientBackground(cornerDp = 17f) else outlineBackground()
+            b.setTextColor(if (selected) 0xFFFFFFFF.toInt() else TEXT_DIM)
         }
     }
 
@@ -378,9 +428,9 @@ class AiKeyboardService : InputMethodService() {
         }
         return Button(this).apply {
             text = label
-            textSize = 16f
-            background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_key)
-            setTextColor(0xFFE8EAED.toInt())
+            textSize = 17f
+            background = keyBackground(KEY_BG)
+            setTextColor(TEXT)
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), weight).apply { setMargins(px(2), px(2), px(2), px(2)) }
             setOnClickListener {
@@ -408,7 +458,7 @@ class AiKeyboardService : InputMethodService() {
         return Button(this).apply {
             text = emoji
             textSize = 18f
-            background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_key)
+            background = keyBackground(KEY_BG)
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), 1f).apply { setMargins(px(2), px(2), px(2), px(2)) }
             setOnClickListener { currentInputConnection?.commitText(emoji, 1) }
@@ -422,16 +472,16 @@ class AiKeyboardService : InputMethodService() {
         anchor.getLocationOnScreen(location)
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = ColorDrawable(0xFF2A2D31.toInt())
-            setPadding(px(4), px(4), px(4), px(4))
+            background = ColorDrawable(0xEE1A1B20.toInt())
+            setPadding(px(6), px(6), px(6), px(6))
         }
         variants.forEach { v ->
             row.addView(Button(this).apply {
                 text = v
                 textSize = 18f
                 isAllCaps = false
-                background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_key_special)
-                setTextColor(0xFFE8EAED.toInt())
+                background = keyBackground(KEY_BG)
+                setTextColor(TEXT)
                 stateListAnimator = null
                 layoutParams = LinearLayout.LayoutParams(px(52), px(52)).apply { setMargins(px(2), 0, px(2), 0) }
                 setOnClickListener {
@@ -457,8 +507,13 @@ class AiKeyboardService : InputMethodService() {
             text = label
             textSize = if (label.length > 2) 12f else 16f
             isAllCaps = false
-            background = getDrawableSafe(com.aireply.keyboard.R.drawable.bg_key_special)
-            setTextColor(0xFFBDC1C6.toInt())
+            // Enter gets the neon gradient; shift lights up when active (Gboard behaviour).
+            background = when {
+                label == "↵" -> gradientBackground(cornerDp = 14f)
+                label == "⇪" -> gradientBackground(cornerDp = 14f)
+                else -> keyBackground(SPECIAL_BG)
+            }
+            setTextColor(if (label == "↵" || label == "⇪") 0xFFFFFFFF.toInt() else TEXT_DIM)
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), weight).apply { setMargins(px(2), px(2), px(2), px(2)) }
             setOnClickListener { action() }
@@ -477,8 +532,6 @@ class AiKeyboardService : InputMethodService() {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
         }
     }
-
-    private fun getDrawableSafe(id: Int) = getDrawable(id)!!
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
