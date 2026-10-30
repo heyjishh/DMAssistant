@@ -29,5 +29,5 @@ The bot's brain, rebuilt as an on-device Android app:
 - Works with any OpenAI-compatible provider, including the free self-hosted
   [gemini-web2api](https://github.com/Sophomoresty/gemini-web2api) (preset included).
 
-See `AIReplyKeyboard/README.md` for build/setup, `PRIVACY_POLICY.md` and
+**Download the signed APK:** [Releases](../../releases) · See `AIReplyKeyboard/README.md` for build/setup, `PRIVACY_POLICY.md` and
 `PLAY_STORE_CHECKLIST.md` for publishing.
