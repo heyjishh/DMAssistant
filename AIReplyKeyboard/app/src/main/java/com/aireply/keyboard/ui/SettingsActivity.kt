@@ -75,6 +75,13 @@ class SettingsActivity : Activity() {
             etStyleProfile.setText(DELHI_PRESET)
             Toast.makeText(this, "Delhi Gen-Z preset loaded — tap Save", Toast.LENGTH_LONG).show()
         }
+        val spinnerKbSize = findViewById<Spinner>(R.id.spinnerKbSize)
+        val kbSizes = listOf("Compact", "Normal", "Tall")
+        spinnerKbSize.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, kbSizes
+        )
+        spinnerKbSize.setSelection(Prefs.kbScaleIndex(this))
+
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             val tone = Tone.entries[spinnerTone.selectedItemPosition]
             Prefs.save(
@@ -94,6 +101,7 @@ class SettingsActivity : Activity() {
                 bilingual = cbBilingual.isChecked,
                 excludedApps = etExcludedApps.text.toString()
             )
+            Prefs.setKbScaleIndex(this, spinnerKbSize.selectedItemPosition)
             Toast.makeText(this, R.string.toast_saved, Toast.LENGTH_SHORT).show()
         }
     }

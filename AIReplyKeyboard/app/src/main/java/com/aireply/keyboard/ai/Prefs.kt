@@ -37,6 +37,19 @@ object Prefs {
 
     fun bilingual(context: Context): Boolean = sp(context).getBoolean("bilingual", false)
 
+    /** Keyboard height scale: 0 = compact, 1 = normal, 2 = tall. */
+    fun kbScaleIndex(context: Context): Int = sp(context).getInt("kb_scale_idx", 1)
+
+    fun kbScale(context: Context): Float = when (kbScaleIndex(context)) {
+        0 -> 0.85f
+        2 -> 1.2f
+        else -> 1.0f
+    }
+
+    fun setKbScaleIndex(context: Context, index: Int) {
+        sp(context).edit().putInt("kb_scale_idx", index).apply()
+    }
+
     /** Remembers the last tone used per chat app, so each conversation keeps its vibe. */
     fun toneForApp(context: Context, packageName: String): Tone? {
         val raw = sp(context).getString("tone_map", "{}")!!

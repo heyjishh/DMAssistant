@@ -122,21 +122,6 @@ For anything serious, the official Gemini/OpenAI presets are the reliable path.
 - **Mock LLM**: a tiny OpenAI-compatible mock (mirrors the gemini-web2api contract,
   including `image_url` parts) lets you test the full pipeline without any API key.
 
-
-## Troubleshooting installation on a real phone
-
-- **"App not installed" when updating**: uninstall the previous AI Reply version first —
-  release builds are signed with a different key than early debug builds, and Android
-  blocks signature-mismatched updates.
-- **Play Protect "Blocked for your safety"**: tap *More details → Install anyway*, or
-  temporarily disable Play Protect scanning (Play Store → Play Protect → gear icon).
-- **"Restricted setting" when enabling the screen reader** (Android 13+): this is
-  Google blocking accessibility for sideloaded apps. Fix: **Settings → Apps → AI Reply
-  → three-dot menu (⋮) → Allow restricted settings**, then enable the service normally.
-  One-time unlock; also required for the 📸 screen-capture consent.
-- **Cleanest option**: install over USB with `adb install -r app-release.apk` — ADB
-  installs are exempt from the restricted-settings flag entirely.
-
 ## Notes & caveats
 
 - The conversation text is sent to whatever API endpoint you configure — use a

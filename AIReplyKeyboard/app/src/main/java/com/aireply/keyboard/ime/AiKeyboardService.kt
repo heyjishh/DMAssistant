@@ -29,6 +29,7 @@ class AiKeyboardService : InputMethodService() {
 
     private var shiftOn = false
     private var symbolsOn = false
+    private var symbolPage = 0
     private var emojiOn = false
     private var tone: Tone = Tone.CASUAL
     private var popup: PopupWindow? = null
@@ -43,16 +44,15 @@ class AiKeyboardService : InputMethodService() {
         listOf("✨", "🎉", "🌹", "☕", "🍕", "🎮", "⚽", "🎧", "📸", "💀", "🤡")
     )
 
-    // ── Rizz/Gboard theme ────────────────────────────────────────────────────
-    private val KB_BG = 0xFF0F1013.toInt()
-    private val KEY_BG = 0xFF2D2E33.toInt()
-    private val SPECIAL_BG = 0xFF232428.toInt()
-    private val CHIP_BG = 0xFF1E2025.toInt()
-    private val CHIP_STROKE = 0xFF3A3D45.toInt()
-    private val TEXT = 0xFFF2F3F5.toInt()
-    private val TEXT_DIM = 0xFFA8ABB2.toInt()
-    private val ACCENT1 = 0xFF7C4DFF.toInt()   // violet
-    private val ACCENT2 = 0xFFFF4D8D.toInt()   // pink
+    // ── Gboard dark theme ────────────────────────────────────────────────────
+    private val KB_BG = 0xFF202124.toInt()
+    private val KEY_BG = 0xFF3C4043.toInt()
+    private val SPECIAL_BG = 0xFF2E3134.toInt()
+    private val CHIP_STROKE = 0xFF5F6368.toInt()
+    private val TEXT = 0xFFE8EAED.toInt()
+    private val TEXT_DIM = 0xFF9AA0A6.toInt()
+    private val ACCENT_BLUE = 0xFF8AB4F8.toInt()
+    private val ON_ACCENT = 0xFF202124.toInt()
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
 
@@ -60,35 +60,20 @@ class AiKeyboardService : InputMethodService() {
     private fun keyBackground(fill: Int): android.graphics.drawable.Drawable {
         val shape = android.graphics.drawable.GradientDrawable().apply {
             setColor(fill)
-            cornerRadius = dp(14f)
+            cornerRadius = dp(12f)
         }
         val mask = android.graphics.drawable.GradientDrawable().apply {
             setColor(0xFFFFFFFF.toInt())
-            cornerRadius = dp(14f)
+            cornerRadius = dp(12f)
         }
         return android.graphics.drawable.RippleDrawable(
             android.content.res.ColorStateList.valueOf(0x30FFFFFF), shape, mask
         )
     }
 
-    /** Gradient pill (violet → pink) with ripple — primary actions and accents. */
-    private fun gradientBackground(cornerDp: Float = 14f): android.graphics.drawable.Drawable {
-        val shape = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(ACCENT1, ACCENT2)
-        ).apply { cornerRadius = dp(cornerDp) }
-        val mask = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFFFFFFFF.toInt())
-            cornerRadius = dp(cornerDp)
-        }
-        return android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(0x40FFFFFF), shape, mask
-        )
-    }
-
     private fun outlineBackground(): android.graphics.drawable.Drawable {
         val shape = android.graphics.drawable.GradientDrawable().apply {
-            setColor(CHIP_BG)
+            setColor(KB_BG)
             cornerRadius = dp(22f)
             setStroke(dp(1f).toInt(), CHIP_STROKE)
         }
@@ -106,10 +91,18 @@ class AiKeyboardService : InputMethodService() {
         listOf('a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'),
         listOf('z', 'x', 'c', 'v', 'b', 'n', 'm')
     )
-    private val symbolRows = listOf(
-        listOf('1', '2', '3', '4', '5', '6', '7', '8', '9', '0'),
-        listOf('@', '#', '$', '%', '&', '-', '+', '(', ')'),
-        listOf('=', '*', '"', '\'', ':', ';', '!', '?')
+    // Gboard-style symbol pages: page 0 = numbers/common, page 1 = brackets/currency.
+    private val symbolPages = listOf(
+        listOf(
+            listOf('1', '2', '3', '4', '5', '6', '7', '8', '9', '0'),
+            listOf('@', '#', '$', '%', '&', '-', '+', '(', ')'),
+            listOf('=', '*', '"', '\'', ':', ';', '!')
+        ),
+        listOf(
+            listOf('[', ']', '{', '}', '<', '>', '~', '`', '^'),
+            listOf('_', '\\', '|', '€', '£', '¥', '₹', '•', '°'),
+            listOf('+', '=', '~', '%', '^', '&', '*')
+        )
     )
 
     companion object {
@@ -163,13 +156,13 @@ class AiKeyboardService : InputMethodService() {
             setPadding(px(4), px(6), px(4), px(8))
         }
 
-        // --- Suggestion row: three AI replies (middle one highlighted, Gboard-style) ---
+        // --- Suggestion row: Gboard-style plain text, middle suggestion emphasized ---
         val suggestionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         suggestionButtons = (0 until 3).map { index ->
             Button(this).apply {
-                background = if (index == 1) gradientBackground(cornerDp = 20f) else outlineBackground()
-                setTextColor(if (index == 1) 0xFFFFFFFF.toInt() else TEXT)
-                textSize = 13f
+                background = keyBackground(KB_BG)
+                setTextColor(if (index == 1) TEXT else TEXT_DIM)
+                textSize = 14f
                 isAllCaps = false
                 setSingleLine()
                 ellipsize = TextUtils.TruncateAt.END
@@ -220,7 +213,7 @@ class AiKeyboardService : InputMethodService() {
             text = "📸"
             textSize = 16f
             background = keyBackground(SPECIAL_BG)
-            setTextColor(TEXT)
+            setTextColor(TEXT_DIM)
             layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
             setOnClickListener { startLiveCapture() }
         })
@@ -228,15 +221,15 @@ class AiKeyboardService : InputMethodService() {
             text = "✎"
             textSize = 16f
             background = keyBackground(SPECIAL_BG)
-            setTextColor(TEXT)
+            setTextColor(TEXT_DIM)
             layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
             setOnClickListener { rewriteDraft() }
         })
         toneRow.addView(Button(this).apply {
             text = "✦"
             textSize = 18f
-            background = gradientBackground(cornerDp = 20f)
-            setTextColor(0xFFFFFFFF.toInt())
+            background = keyBackground(ACCENT_BLUE)
+            setTextColor(ON_ACCENT)
             layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
             setOnClickListener { generateReplies() }
         })
@@ -276,14 +269,14 @@ class AiKeyboardService : InputMethodService() {
         }
     }
 
-    /** Restyles chips in place — selected one gets the gradient, others stay glassy. */
+    /** Restyles chips in place — selected gets Gboard blue, others stay outlined. */
     private fun styleChips() {
         for (i in 0 until chipRow.childCount) {
             val b = chipRow.getChildAt(i) as? Button ?: continue
             val t = b.tag as? Tone ?: continue
             val selected = t == tone
-            b.background = if (selected) gradientBackground(cornerDp = 17f) else outlineBackground()
-            b.setTextColor(if (selected) 0xFFFFFFFF.toInt() else TEXT_DIM)
+            b.background = if (selected) keyBackground(ACCENT_BLUE) else outlineBackground()
+            b.setTextColor(if (selected) ON_ACCENT else TEXT_DIM)
         }
     }
 
@@ -411,24 +404,39 @@ class AiKeyboardService : InputMethodService() {
 
     private fun rebuildKeys(px: (Int) -> Int) {
         keysColumn.removeAllViews()
+        val hs = Prefs.kbScale(this) // keyboard height scale from settings
+        fun rowH() = px((46 * hs).toInt())
+        fun keyH() = px((44 * hs).toInt())
 
         if (emojiOn) {
             emojiRows.forEach { chars ->
                 val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 chars.forEach { e -> row.addView(makeEmojiKey(e, px)) }
                 keysColumn.addView(row, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, px(46)
+                    LinearLayout.LayoutParams.MATCH_PARENT, rowH()
                 ))
             }
         } else {
-            val rows = if (symbolsOn) symbolRows else accentRows
+            // Gboard structure: row3 = [⇧ or page-toggle] + 7 keys + [⌫]
+            val rows: List<List<Char>> = when {
+                !symbolsOn -> accentRows
+                else -> symbolPages[symbolPage]
+            }
             rows.forEachIndexed { rowIndex, chars ->
                 val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 if (rowIndex == 2) {
-                    row.addView(makeSpecialKey(if (symbolsOn) "ABC" else "123", px, weight = 1.4f) {
-                        symbolsOn = !symbolsOn
-                        rebuildKeys(px)
-                    })
+                    if (!symbolsOn) {
+                        row.addView(makeSpecialKey(if (shiftOn) "⇪" else "⇧", px, weight = 1.4f) {
+                            shiftOn = !shiftOn
+                            rebuildKeys(px)
+                        })
+                    } else {
+                        // page toggle: =\< on page 0, back to numbers on page 1
+                        row.addView(makeSpecialKey(if (symbolPage == 0) "=\\<" else "123", px, weight = 1.4f) {
+                            symbolPage = if (symbolPage == 0) 1 else 0
+                            rebuildKeys(px)
+                        })
+                    }
                 }
                 chars.forEach { c ->
                     row.addView(makeCharKey(c, px))
@@ -439,39 +447,30 @@ class AiKeyboardService : InputMethodService() {
                     })
                 }
                 keysColumn.addView(row, LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, px(46)
+                    LinearLayout.LayoutParams.MATCH_PARENT, rowH()
                 ))
             }
         }
 
-        // Bottom row: shift/ABC, comma, space, emoji, period, enter
+        // Gboard bottom row: [😊] [?123] [,] [space] [.] [↵]
         val bottom = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        bottom.addView(makeSpecialKey(
-            when {
-                emojiOn -> "ABC"
-                shiftOn -> "⇪"
-                else -> "⇧"
-            }, px, weight = 1.4f
-        ) {
-            if (emojiOn) {
-                emojiOn = false
-            } else {
-                shiftOn = !shiftOn
-            }
-            rebuildKeys(px)
-        })
-        bottom.addView(makeCharKey(',', px, weight = 1f))
-        bottom.addView(makeSpecialKey("space", px, weight = 3.5f) {
-            currentInputConnection?.commitText(" ", 1)
-        })
         bottom.addView(makeSpecialKey("😊", px, weight = 1f) {
             emojiOn = !emojiOn
             rebuildKeys(px)
         })
+        bottom.addView(makeSpecialKey(if (symbolsOn) "ABC" else "?123", px, weight = 1.4f) {
+            symbolsOn = !symbolsOn
+            symbolPage = 0
+            rebuildKeys(px)
+        })
+        bottom.addView(makeCharKey(',', px, weight = 1f))
+        bottom.addView(makeSpecialKey("space", px, weight = 4f) {
+            currentInputConnection?.commitText(" ", 1)
+        })
         bottom.addView(makeCharKey('.', px, weight = 1f))
         bottom.addView(makeSpecialKey("↵", px, weight = 1.4f) { commitEnter() })
         keysColumn.addView(bottom, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, px(46)
+            LinearLayout.LayoutParams.MATCH_PARENT, rowH()
         ))
     }
 
@@ -560,15 +559,12 @@ class AiKeyboardService : InputMethodService() {
     private fun makeSpecialKey(label: String, px: (Int) -> Int, weight: Float, action: () -> Unit): Button {
         return Button(this).apply {
             text = label
-            textSize = if (label.length > 2) 12f else 16f
+            textSize = if (label.length > 2) 13f else 16f
             isAllCaps = false
-            // Enter gets the neon gradient; shift lights up when active (Gboard behaviour).
-            background = when {
-                label == "↵" -> gradientBackground(cornerDp = 14f)
-                label == "⇪" -> gradientBackground(cornerDp = 14f)
-                else -> keyBackground(SPECIAL_BG)
-            }
-            setTextColor(if (label == "↵" || label == "⇪") 0xFFFFFFFF.toInt() else TEXT_DIM)
+            // Gboard: enter and active shift are the accent blue; other keys are muted.
+            val accent = label == "↵" || label == "⇪"
+            background = keyBackground(if (accent) ACCENT_BLUE else SPECIAL_BG)
+            setTextColor(if (accent) ON_ACCENT else TEXT_DIM)
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), weight).apply { setMargins(px(2), px(2), px(2), px(2)) }
             setOnClickListener { action() }
