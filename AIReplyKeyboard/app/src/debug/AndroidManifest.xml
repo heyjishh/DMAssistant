@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only manifest: the adb test hook exists solely in debug builds. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".ime.TestHookReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.aireply.keyboard.TEST" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

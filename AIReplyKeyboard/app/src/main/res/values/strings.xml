@@ -1,0 +1,47 @@
+<resources>
+    <string name="app_name">AI Reply</string>
+    <string name="ime_name">AI Reply Keyboard</string>
+    <string name="accessibility_label">AI Reply — Screen Reader</string>
+    <string name="accessibility_description">Lets the AI Reply keyboard read the text of the app you are chatting in, so it can suggest replies. No data is stored; conversation text is only sent to the AI provider you configure.</string>
+
+    <string name="settings_title">AI Reply Settings</string>
+    <string name="label_provider_preset">AI provider</string>
+    <string name="hint_base_url">API base URL (e.g. https://api.openai.com/v1)</string>
+    <string name="hint_api_key">API key</string>
+    <string name="hint_model">Model name (e.g. gpt-4o-mini)</string>
+    <string name="hint_vision_model">Vision model for screenshots (e.g. gpt-4o-mini)</string>
+    <string name="label_style_profile">Your texting style (the AI adapts to it)</string>
+    <string name="hint_style_profile">Describe how you text: short messages, emojis, no caps, pet phrases…</string>
+    <string name="btn_delhi_preset">Load Delhi Gen-Z (Hinglish) style preset</string>
+    <string name="label_bilingual">Hinglish mode — generate replies in Hinglish</string>
+    <string name="label_excluded_apps">Never read these apps (privacy)</string>
+    <string name="hint_excluded_apps">Comma-separated package names, e.g. com.mybank.app, com.android.chrome</string>
+
+    <string name="btn_open_saved">Saved replies</string>
+    <string name="saved_title">Saved Replies</string>
+    <string name="saved_hint">Long-press a suggestion in the keyboard to save it. Tap here to copy, long-press to delete.</string>
+    <string name="saved_empty">Nothing saved yet — long-press a suggested reply in the keyboard to keep it here.</string>
+
+    <string name="btn_open_settings">Setup &amp; API settings</string>
+    <string name="btn_open_analyzer">Screenshot analyzer (openers, replies, flag audit)</string>
+    <string name="btn_open_library">Message library (offline pickup lines)</string>
+
+    <string name="analyzer_title">Screenshot Analyzer</string>
+    <string name="analyzer_preview_desc">Screenshot preview</string>
+    <string name="btn_pick_screenshot">Pick a chat/bio screenshot</string>
+    <string name="label_tone">Tone</string>
+    <string name="btn_openers">Openers</string>
+    <string name="btn_replies">Replies</string>
+    <string name="btn_audit">Flag audit</string>
+    <string name="analyzer_hint">Results appear here. Openers work best on a dating profile, Replies on a chat screenshot, Flag audit reviews the whole conversation.</string>
+    <string name="btn_copy">Copy result</string>
+
+    <string name="library_title">Message Library</string>
+    <string name="library_hint">Tap a line to copy it. Works fully offline.</string>
+    <string name="label_default_tone">Default tone</string>
+    <string name="btn_save">Save settings</string>
+    <string name="btn_enable_keyboard">1. Enable the keyboard</string>
+    <string name="btn_enable_accessibility">2. Enable screen reading (Accessibility)</string>
+    <string name="setup_note">Enable both, then switch to the AI Reply keyboard in any chat app. Tap the ✦ button to generate replies.</string>
+    <string name="toast_saved">Saved</string>
+</resources>
