@@ -18,6 +18,7 @@ class ChatReaderService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+        android.util.Log.i("ChatReader", "screen reader connected")
     }
 
     override fun onDestroy() {
@@ -48,11 +49,56 @@ class ChatReaderService : AccessibilityService() {
     }
 
     private fun captureSnapshot(pkg: String) {
-        val root: AccessibilityNodeInfo = rootInActiveWindow ?: return
+        val root = windowRootFor(pkg) ?: return
         val sb = StringBuilder()
         collectText(root, sb, 0)
         val text = sb.toString().trim()
-        if (text.isNotEmpty()) ChatStore.update(pkg, text)
+        if (text.isNotEmpty()) {
+            ChatStore.update(pkg, text)
+            android.util.Log.d("ChatReader", "captured ${text.length} chars from $pkg")
+        }
+    }
+
+    /**
+     * Root of the given app's window. Critical: while an IME is open,
+     * rootInActiveWindow often IS the keyboard — so prefer the app's own window
+     * from the window list, falling back to the active window.
+     */
+    private fun windowRootFor(pkg: String): AccessibilityNodeInfo? {
+        windows?.firstOrNull { w ->
+            w.root?.packageName?.toString() == pkg
+        }?.root?.let { return it }
+        return rootInActiveWindow?.takeIf { it.packageName?.toString() == pkg }
+    }
+
+    /**
+     * On-demand capture for the ✦ button: grabs text from the most likely chat
+     * window even if no accessibility event was processed. Returns chars captured.
+     */
+    fun captureNow(): Int {
+        val excluded = Prefs.excludedApps(applicationContext)
+        var node: AccessibilityNodeInfo? = null
+        var nodePkg = ""
+        windows?.forEach { w ->
+            if (node != null) return@forEach
+            val root = w.root ?: return@forEach
+            val wpkg = root.packageName?.toString() ?: return@forEach
+            if (wpkg == applicationContext.packageName || wpkg == "com.android.systemui") return@forEach
+            if (excluded.any { it.equals(wpkg, ignoreCase = true) }) return@forEach
+            node = root
+            nodePkg = wpkg
+        }
+        val target = node ?: rootInActiveWindow?.takeIf {
+            it.packageName?.toString() != applicationContext.packageName &&
+                !excluded.any { e -> it.packageName?.toString()?.equals(e, true) == true }
+        } ?: return 0
+        val sb = StringBuilder()
+        collectText(target, sb, 0)
+        val text = sb.toString().trim()
+        if (text.isNotEmpty()) {
+            ChatStore.update(nodePkg.ifEmpty { target.packageName?.toString() ?: "" }, text)
+        }
+        return text.length
     }
 
     private fun collectText(node: AccessibilityNodeInfo, sb: StringBuilder, depth: Int) {

@@ -360,11 +360,24 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun generateReplies() {
-        val snapshot = ChatStore.latestText
+        var snapshot = ChatStore.latestText
+        // ✦ pressed but nothing captured yet? Try an on-demand read of the chat window.
+        if (snapshot.isEmpty()) {
+            com.aireply.keyboard.reader.ChatReaderService.instance?.captureNow()
+            snapshot = ChatStore.latestText
+        }
         val image = ChatStore.latestImage
             ?.takeIf { System.currentTimeMillis() - ChatStore.latestImageAt < 120_000 }
         if (snapshot.isEmpty() && image == null) {
-            Toast.makeText(this, "No chat text captured yet — make sure Accessibility is enabled for AI Reply.", Toast.LENGTH_LONG).show()
+            val why = when {
+                !com.aireply.keyboard.reader.ChatReaderService.isRunning ->
+                    "Screen reader is off — enable it in Settings → Accessibility (see app setup)."
+                ChatStore.updatedAt == 0L ->
+                    "No screen text captured. Open the chat first, keep it open, then tap ✦."
+                else ->
+                    "Captured text is stale (${(System.currentTimeMillis() - ChatStore.updatedAt) / 1000}s old). Reopen the chat, then tap ✦."
+            }
+            Toast.makeText(this, why, Toast.LENGTH_LONG).show()
             return
         }
         resetSuggestions("…")
