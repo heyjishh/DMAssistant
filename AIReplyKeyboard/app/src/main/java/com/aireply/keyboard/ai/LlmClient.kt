@@ -55,6 +55,14 @@ object LlmClient {
             "- If their energy is dry: at most ONE warm value-adding reply; make another a graceful light exit; NEVER chase, never double-question, never 'why no reply'\n" +
             "- If a warning is included below, obey it strictly\n" +
             "- Text like a real human: contractions, casual casing ok, max 1-2 emojis, no em dashes, no hashtags, no assistant-speak, no apologizing for texting\n" +
+            "HUMANIZE RULES (critical — the output must pass as a real person typing, not AI):\n" +
+            "- VARY LENGTH HARD: one reply must be 2-5 words, one 8-14 words, one your choice. Never three similar lengths — uniform rhythm is the #1 AI tell\n" +
+            "- At most ONE reply ends with a question mark. At most ONE starts with 'haha'\n" +
+            "- Never start two replies with the same word\n" +
+            "- BANNED (AI/cringe tells): delve, tapestry, vibes (unless she used it), lowkey, iykyk, fr fr, no cap, main character energy, unhinged, 'not me', 'the way', 'caught in 4k', 'ate that', 'slay' (unless she used it), bestie, periodt\n" +
+            "- Use HER vocabulary: if she writes 'lol' use 'lol'; if she types properly you type properly; if she uses slang she actually uses, you may too\n" +
+            "- Small imperfections are human: sometimes skip end punctuation, use sentence fragments, casual lowercase\n" +
+            "- No rule-of-three structures, no perfectly parallel phrasing between replies, never announce the move ('smooth right?')\n" +
             "Output format: reply1 ||| reply2 ||| reply3 on one line, always 3, no numbering, no quotes."
     }
 
@@ -292,11 +300,40 @@ object LlmClient {
     internal fun parseReplies(content: String): List<String> {
         val cleaned = content.trim()
         val rawParts = if (cleaned.contains("|||")) cleaned.split("|||") else cleaned.lines()
-        return rawParts
+        val replies = rawParts
             .map { it.trim().trim('"') }
             .map { it.replace(Regex("^\\s*(?:\\d+[.)]|[-•*])\\s*"), "") }
             .filter { it.isNotEmpty() }
             .take(3)
-            .ifEmpty { throw IOException("Model returned no usable replies.") }
+            .let { humanize(it) }
+        if (replies.isEmpty()) throw IOException("Model returned no usable replies.")
+        return replies
+    }
+
+    // Filler openers that can be stripped when two replies start identically.
+    private val FILLERS = setOf(
+        "haha", "hahaha", "lol", "omg", "okay", "ok", "so", "honestly", "ngl", "yo", "hey", "but", "and"
+    )
+
+    /**
+     * De-AI pass on model output:
+     * - trailing single period removed (Klin 2016: periods read less sincere in texts)
+     * - no two replies may start with the same word — when they do, a leading filler
+     *   word is stripped from the later one so the rhythm varies (burstiness)
+     */
+    private fun humanize(replies: List<String>): List<String> {
+        val seenStarts = HashSet<String>()
+        return replies.map { raw ->
+            var r = raw.replace(Regex("\\.$"), "")
+            val first = r.substringBefore(" ").lowercase()
+            if (!seenStarts.add(first)) {
+                val words = r.split(" ")
+                if (words.size > 1 && words.first().lowercase() in FILLERS) {
+                    r = words.drop(1).joinToString(" ")
+                    seenStarts.add(r.substringBefore(" ").lowercase())
+                }
+            }
+            r
+        }
     }
 }

@@ -42,4 +42,31 @@ class ParseRepliesTest {
         }
         assertTrue(threw)
     }
+
+    @Test
+    fun `strips trailing period — reads more sincere in texts (Klin 2016)`() {
+        val replies = LlmClient.parseReplies("sounds good.")
+        assertEquals("sounds good", replies[0])
+    }
+
+    @Test
+    fun `keeps question and exclamation endings`() {
+        val replies = LlmClient.parseReplies("you coming? ||| hell yes!")
+        assertEquals("you coming?", replies[0])
+        assertEquals("hell yes!", replies[1])
+    }
+
+    @Test
+    fun `dedupes identical starters by stripping leading filler`() {
+        val replies = LlmClient.parseReplies("haha that's wild ||| haha same here ||| okay bet")
+        assertTrue(replies[0].startsWith("haha"))
+        assertTrue(!replies[1].startsWith("haha"))
+        assertEquals("same here", replies[1])
+    }
+
+    @Test
+    fun `keeps ellipsis intact`() {
+        val replies = LlmClient.parseReplies("wait what… ||| no way")
+        assertEquals("wait what…", replies[0])
+    }
 }
