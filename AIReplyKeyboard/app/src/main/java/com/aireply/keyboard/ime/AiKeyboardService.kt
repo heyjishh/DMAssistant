@@ -164,6 +164,11 @@ class AiKeyboardService : InputMethodService() {
         if (::suggestionButtons.isInitialized) setInputView(onCreateInputView())
     }
 
+    fun debugTone(name: String) {
+        tone = runCatching { Tone.valueOf(name.uppercase()) }.getOrDefault(tone)
+        if (::chipRow.isInitialized) styleChips()
+    }
+
     fun debugInsert(index: Int) {
         val text = lastReplies.getOrElse(index) { return }
         insertSuggestion(text, index)

@@ -27,6 +27,7 @@ class TestHookReceiver : BroadcastReceiver() {
             }
             "generate" -> service.debugGenerate()
             "capture" -> service.debugCapture()
+            "tone" -> service.debugTone(intent.getStringExtra("name") ?: "Casual")
             "theme" -> {
                 Prefs.setThemeIndex(context, intent.getIntExtra("idx", 0))
                 service.rebuildWithTheme()
