@@ -13,6 +13,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.aireply.keyboard.ai.AdviceKB
 import com.aireply.keyboard.ai.LlmClient
 import com.aireply.keyboard.ai.MoodSensor
 import com.aireply.keyboard.ai.OfflineFallback
@@ -26,6 +27,7 @@ class AiKeyboardService : InputMethodService() {
     private lateinit var keysColumn: LinearLayout
     private lateinit var chipRow: LinearLayout
     private lateinit var suggestionButtons: List<Button>
+    private lateinit var tipView: TextView
 
     private var shiftOn = false
     private var symbolsOn = false
@@ -209,6 +211,19 @@ class AiKeyboardService : InputMethodService() {
         resetSuggestions()
         root.addView(suggestionRow)
 
+        // --- 💡 Coach tip line (from the game knowledge base) ---
+        tipView = TextView(this).apply {
+            setTextColor(TEXT_DIM)
+            textSize = 11f
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(px(10), px(1), px(10), px(1))
+            visibility = View.GONE
+        }
+        root.addView(tipView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = px(1) })
+
         // --- Tone chips + generate button ---
         val toneRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val chipScroll = HorizontalScrollView(this).apply {
@@ -306,6 +321,13 @@ class AiKeyboardService : InputMethodService() {
         if (!::suggestionButtons.isInitialized) return
         val hints = placeholder?.let { listOf(it, it, it) } ?: listOf("Tap ✦ for reply 1", "Tap ✦ for reply 2", "Tap ✦ for reply 3")
         suggestionButtons.forEachIndexed { i, b -> b.text = hints[i] }
+        if (::tipView.isInitialized) tipView.visibility = View.GONE
+    }
+
+    private fun showTip(mood: String, trap: String?) {
+        if (!::tipView.isInitialized) return
+        tipView.text = "💡 ${AdviceKB.tip(mood, trap)}"
+        tipView.visibility = View.VISIBLE
     }
 
     private fun insertSuggestion(text: String, index: Int) {
@@ -392,6 +414,7 @@ class AiKeyboardService : InputMethodService() {
                     if (::suggestionButtons.isInitialized) {
                         suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
                     }
+                    showTip(read.mood, read.trap)
                     detected?.let {
                         Toast.makeText(this, "Analyzed: $it", Toast.LENGTH_SHORT).show()
                     }
@@ -420,6 +443,7 @@ class AiKeyboardService : InputMethodService() {
                         if (::suggestionButtons.isInitialized) {
                             suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
                         }
+                        showTip(read.mood, read.trap)
                     },
                     onFailure = {
                         lastReplies = emptyList()
