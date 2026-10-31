@@ -25,7 +25,8 @@ class AiKeyboardService : InputMethodService() {
 
     private lateinit var root: LinearLayout
     private lateinit var keysColumn: LinearLayout
-    private lateinit var chipRow: LinearLayout
+    private lateinit var toneBtn: Button
+    private lateinit var generateBtn: Button
     private lateinit var suggestionButtons: List<Button>
     private lateinit var tipView: TextView
 
@@ -166,7 +167,7 @@ class AiKeyboardService : InputMethodService() {
 
     fun debugTone(name: String) {
         tone = runCatching { Tone.valueOf(name.uppercase()) }.getOrDefault(tone)
-        if (::chipRow.isInitialized) styleChips()
+        updateToneChip()
     }
 
     fun debugInsert(index: Int) {
@@ -185,36 +186,92 @@ class AiKeyboardService : InputMethodService() {
         }
         builtConfig = Prefs.themeIndex(this) * 10 + Prefs.kbScaleIndex(this)
 
-        // --- Suggestion row: Gboard-style plain text, middle suggestion emphasized ---
-        val suggestionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        // --- AI controls row: tone selector + capture / rewrite / keyboard switch ---
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        toneBtn = Button(this).apply {
+            text = "🎭 ${tone.label} ▾"
+            textSize = 13f
+            isAllCaps = false
+            setSingleLine()
+            background = keyBackground(SPECIAL_BG)
+            setTextColor(TEXT)
+            layoutParams = LinearLayout.LayoutParams(0, px(40), 1f).apply { setMargins(px(3), 0, px(3), 0) }
+            setOnClickListener { v ->
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                showTonePicker(v, px)
+            }
+        }
+        controls.addView(toneBtn)
+        val tools = listOf(
+            "📸" to { startLiveCapture() },
+            "✎" to { rewriteDraft() },
+            "🌐" to { switchToNextInputMethod(false) }
+        )
+        tools.forEach { (icon, action) ->
+            controls.addView(Button(this).apply {
+                text = icon
+                textSize = 16f
+                background = keyBackground(SPECIAL_BG)
+                setTextColor(TEXT_DIM)
+                layoutParams = LinearLayout.LayoutParams(px(46), px(40)).apply { setMargins(px(3), 0, 0, 0) }
+                setOnClickListener { v ->
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    action()
+                }
+            })
+        }
+        root.addView(controls, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = px(4) })
+
+        // --- Replies panel: big generate button, then stacked full-width reply cards ---
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        generateBtn = Button(this).apply {
+            text = "✦  Generate AI replies"
+            textSize = 15f
+            isAllCaps = false
+            background = keyBackground(ACCENT_BLUE)
+            setTextColor(ON_ACCENT)
+            stateListAnimator = null
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, px(48)
+            ).apply { setMargins(px(3), px(4), px(3), 0) }
+            setOnClickListener { v ->
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                generateReplies()
+            }
+        }
+        panel.addView(generateBtn)
         suggestionButtons = (0 until 3).map { index ->
             Button(this).apply {
-                background = keyBackground(KB_BG)
-                setTextColor(if (index == 1) TEXT else TEXT_DIM)
                 textSize = 14f
                 isAllCaps = false
-                setSingleLine()
+                background = keyBackground(KEY_BG)
+                setTextColor(TEXT)
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
-                setPadding(px(10), px(6), px(10), px(6))
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(0, px(40), 1f).apply {
-                    setMargins(px(3), 0, px(3), 0)
-                }
+                setPadding(px(12), px(6), px(12), px(6))
+                visibility = View.GONE
+                stateListAnimator = null
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(px(3), px(3), px(3), 0); minHeight = px(46) }
                 setOnClickListener { insertSuggestion(text.toString(), index) }
                 setOnLongClickListener {
                     val t = text.toString()
-                    if (t.startsWith("Tap ✦") || t == "…" || t.startsWith("Tap ✦ to retry")) {
-                        false
-                    } else {
+                    if (t.isBlank()) false
+                    else {
                         Prefs.addSaved(this@AiKeyboardService, t)
                         Toast.makeText(this@AiKeyboardService, "Saved 🔖 — find it in the app", Toast.LENGTH_SHORT).show()
                         true
                     }
                 }
-            }.also { suggestionRow.addView(it) }
+            }.also { panel.addView(it) }
         }
-        resetSuggestions()
-        root.addView(suggestionRow)
 
         // --- 💡 Coach tip line (from the game knowledge base) ---
         tipView = TextView(this).apply {
@@ -222,62 +279,17 @@ class AiKeyboardService : InputMethodService() {
             textSize = 11f
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
-            setPadding(px(10), px(1), px(10), px(1))
+            setPadding(px(12), px(2), px(12), px(2))
             visibility = View.GONE
         }
-        root.addView(tipView, LinearLayout.LayoutParams(
+        panel.addView(tipView, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = px(1) })
+        ).apply { topMargin = px(2) })
 
-        // --- Tone chips + generate button ---
-        val toneRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val chipScroll = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        Tone.entries.forEach { t ->
-            chipRow.addView(makeChip(t, px))
-        }
-        styleChips()
-        chipScroll.addView(chipRow)
-        toneRow.addView(chipScroll)
-
-        toneRow.addView(Button(this).apply {
-            text = "🌐"
-            textSize = 16f
-            background = keyBackground(SPECIAL_BG)
-            setTextColor(TEXT_DIM)
-            layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
-            setOnClickListener { switchToNextInputMethod(false) }
-        })
-        toneRow.addView(Button(this).apply {
-            text = "📸"
-            textSize = 16f
-            background = keyBackground(SPECIAL_BG)
-            setTextColor(TEXT_DIM)
-            layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
-            setOnClickListener { startLiveCapture() }
-        })
-        toneRow.addView(Button(this).apply {
-            text = "✎"
-            textSize = 16f
-            background = keyBackground(SPECIAL_BG)
-            setTextColor(TEXT_DIM)
-            layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
-            setOnClickListener { rewriteDraft() }
-        })
-        toneRow.addView(Button(this).apply {
-            text = "✦"
-            textSize = 18f
-            background = keyBackground(ACCENT_BLUE)
-            setTextColor(ON_ACCENT)
-            layoutParams = LinearLayout.LayoutParams(px(48), px(40)).apply { setMargins(px(4), 0, 0, 0) }
-            setOnClickListener { generateReplies() }
-        })
-        root.addView(toneRow, LinearLayout.LayoutParams(
+        resetSuggestions()
+        root.addView(panel, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = px(6) })
+        ).apply { topMargin = px(2) })
 
         // --- QWERTY keys ---
         keysColumn = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -289,54 +301,86 @@ class AiKeyboardService : InputMethodService() {
         return root
     }
 
-    private fun makeChip(t: Tone, px: (Int) -> Int): Button {
-        return Button(this).apply {
-            text = t.label
-            tag = t
-            textSize = 12f
-            isAllCaps = false
-            setSingleLine()
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, px(34)
-            ).apply { setMargins(px(3), 0, px(3), 0) }
-            setPadding(px(12), 0, px(12), 0)
-            setOnClickListener {
-                tone = t
-                styleChips()
-                // Remember the vibe for this chat app so reopening it feels the same.
-                ChatStore.packageName.takeIf { it.isNotEmpty() }?.let {
-                    Prefs.setToneForApp(this@AiKeyboardService, it, t)
-                }
-            }
-        }
+    /** Tone selector chip label/style. */
+    private fun updateToneChip() {
+        if (!::toneBtn.isInitialized) return
+        toneBtn.text = "🎭 ${tone.label} ▾"
+        toneBtn.background = keyBackground(ACCENT_BLUE)
+        toneBtn.setTextColor(ON_ACCENT)
     }
 
-    /** Restyles chips in place — selected gets Gboard blue, others stay outlined. */
-    private fun styleChips() {
-        for (i in 0 until chipRow.childCount) {
-            val b = chipRow.getChildAt(i) as? Button ?: continue
-            val t = b.tag as? Tone ?: continue
-            val selected = t == tone
-            b.background = if (selected) keyBackground(ACCENT_BLUE) else outlineBackground()
-            b.setTextColor(if (selected) ON_ACCENT else TEXT_DIM)
+    /** Grid popup with all 9 tones — replaces the cramped chip row. */
+    private fun showTonePicker(anchor: View, px: (Int) -> Int) {
+        dismissPopup()
+        val scrim = (0xF2 shl 24) or (KB_BG and 0x00FFFFFF)
+        val grid = android.widget.GridLayout(this).apply {
+            rowCount = 3
+            columnCount = 3
+            background = ColorDrawable(scrim)
+            setPadding(px(8), px(8), px(8), px(8))
+        }
+        Tone.entries.forEach { t ->
+            grid.addView(Button(this).apply {
+                text = t.label
+                textSize = 13f
+                isAllCaps = false
+                background = if (t == tone) keyBackground(ACCENT_BLUE) else keyBackground(KEY_BG)
+                setTextColor(if (t == tone) ON_ACCENT else TEXT)
+                stateListAnimator = null
+                layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                    width = px(94)
+                    height = px(44)
+                    setMargins(px(4), px(4), px(4), px(4))
+                }
+                setOnClickListener { v ->
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    tone = t
+                    updateToneChip()
+                    ChatStore.packageName.takeIf { it.isNotEmpty() }?.let {
+                        Prefs.setToneForApp(this@AiKeyboardService, it, t)
+                    }
+                    dismissPopup()
+                }
+            })
+        }
+        popup = PopupWindow(
+            grid, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT, true
+        ).apply {
+            isOutsideTouchable = true
+            setBackgroundDrawable(ColorDrawable(0x00000000))
+            showAsDropDown(anchor, 0, px(4))
         }
     }
 
     private fun resetSuggestions(placeholder: String? = null) {
         if (!::suggestionButtons.isInitialized) return
-        val hints = placeholder?.let { listOf(it, it, it) } ?: listOf("Tap ✦ for reply 1", "Tap ✦ for reply 2", "Tap ✦ for reply 3")
-        suggestionButtons.forEachIndexed { i, b -> b.text = hints[i] }
+        generateBtn.visibility = View.VISIBLE
+        generateBtn.text = placeholder ?: "✦  Generate AI replies"
+        suggestionButtons.forEach { it.visibility = View.GONE }
         if (::tipView.isInitialized) tipView.visibility = View.GONE
     }
 
-    private fun showTip(mood: String, trap: String?) {
-        if (!::tipView.isInitialized) return
-        tipView.text = "💡 ${AdviceKB.tip(mood, trap)}"
-        tipView.visibility = View.VISIBLE
+    /** Shows the generated replies as full-width cards + the 💡 tip. */
+    private fun showReplies(replies: List<String>, mood: String, trap: String?) {
+        if (!::suggestionButtons.isInitialized) return
+        generateBtn.visibility = View.GONE
+        suggestionButtons.forEachIndexed { i, b ->
+            val r = replies.getOrNull(i)
+            if (r == null) {
+                b.visibility = View.GONE
+                return@forEachIndexed
+            }
+            b.text = r
+            b.visibility = View.VISIBLE
+        }
+        if (::tipView.isInitialized) {
+            tipView.text = "💡 ${AdviceKB.tip(mood, trap)}"
+            tipView.visibility = View.VISIBLE
+        }
     }
 
     private fun insertSuggestion(text: String, index: Int) {
-        if (text.startsWith("Tap ✦") || text == "…") return
+        if (text.isBlank()) return
         currentInputConnection?.commitText(text, 1)
         resetSuggestions()
     }
@@ -417,7 +461,7 @@ class AiKeyboardService : InputMethodService() {
                     if (::suggestionButtons.isInitialized) {
                         suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
                     }
-                    showTip(read.mood, read.trap)
+                    showReplies(replies, read.mood, read.trap)
                     detected?.let {
                         Toast.makeText(this, "Analyzed: $it", Toast.LENGTH_SHORT).show()
                     }
@@ -446,7 +490,7 @@ class AiKeyboardService : InputMethodService() {
                         if (::suggestionButtons.isInitialized) {
                             suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
                         }
-                        showTip(read.mood, read.trap)
+                        showReplies(replies, read.mood, read.trap)
                     },
                     onFailure = {
                         lastReplies = emptyList()
@@ -673,7 +717,7 @@ class AiKeyboardService : InputMethodService() {
         ChatStore.packageName.takeIf { it.isNotEmpty() }
             ?.let { Prefs.toneForApp(this, it) }
             ?.let { tone = it }
-        if (::chipRow.isInitialized) styleChips()
+        updateToneChip()
         resetSuggestions()
     }
 }
