@@ -41,6 +41,31 @@ class AiKeyboardService : InputMethodService() {
     private var lastReplies: List<String> = emptyList()
     private var builtConfig = -1 // theme idx * 10 + kb scale idx, to detect settings changes
 
+    // Live "Generating… Ns" timer while waiting on the AI call.
+    private val timerHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var genStart = 0L
+
+    private fun startGenTimer() {
+        if (!::generateBtn.isInitialized) return
+        genStart = System.currentTimeMillis()
+        val tick = object : Runnable {
+            override fun run() {
+                if (::generateBtn.isInitialized && generateBtn.visibility == View.VISIBLE) {
+                    val s = (System.currentTimeMillis() - genStart) / 1000.0
+                    generateBtn.text = String.format("✦  Generating… %.0fs", s)
+                    timerHandler.postDelayed(this, 500)
+                }
+            }
+        }
+        timerHandler.post(tick)
+    }
+
+    private fun genSeconds(): String = "%.1fs".format((System.currentTimeMillis() - genStart) / 1000.0)
+
+    private fun stopGenTimer() {
+        timerHandler.removeCallbacksAndMessages(null)
+    }
+
     private val emojiRows = listOf(
         listOf("😀", "😂", "🥲", "😍", "😘", "😜", "🤔", "😏", "😎", "🥳", "😇"),
         listOf("😢", "😭", "😡", "🙄", "😴", "🤗", "🤩", "🫣", "🤠", "😈", "👀"),
@@ -352,6 +377,7 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun resetSuggestions(placeholder: String? = null) {
+        stopGenTimer()
         if (!::suggestionButtons.isInitialized) return
         generateBtn.visibility = View.VISIBLE
         generateBtn.text = placeholder ?: "✦  Generate AI replies"
@@ -454,6 +480,7 @@ class AiKeyboardService : InputMethodService() {
         val avoid = if (snapshot == lastSnapshot) lastReplies else emptyList()
         lastSnapshot = snapshot
         val done: (Result<Pair<String?, List<String>>>) -> Unit = { result ->
+            stopGenTimer()
             result.fold(
                 onSuccess = { (detected, replies) ->
                     lastReplies = replies
@@ -461,6 +488,9 @@ class AiKeyboardService : InputMethodService() {
                         suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
                     }
                     showReplies(replies, read.mood, read.trap)
+                    if (::tipView.isInitialized && tipView.visibility == View.VISIBLE) {
+                        tipView.append("   ·  ⚡ ${genSeconds()}")
+                    }
                     detected?.let {
                         Toast.makeText(this, "Analyzed: $it", Toast.LENGTH_SHORT).show()
                     }
@@ -470,6 +500,10 @@ class AiKeyboardService : InputMethodService() {
                     if (::suggestionButtons.isInitialized) {
                         val offline = OfflineFallback.suggest(tone, read.mood, Prefs.bilingual(this))
                         suggestionButtons.forEachIndexed { i, b -> b.text = offline.getOrElse(i) { "—" } }
+                        if (::generateBtn.isInitialized) {
+                            generateBtn.visibility = View.VISIBLE
+                            generateBtn.text = "✦  Retry"
+                        }
                     }
                     Toast.makeText(
                         this,
@@ -483,6 +517,7 @@ class AiKeyboardService : InputMethodService() {
             LlmClient.generateFromLiveScreen(this, tone, image, snapshot.ifEmpty { "(no readable text)" }, avoid, done)
         } else {
             LlmClient.generate(this, tone, snapshot, avoid) { result ->
+                stopGenTimer()
                 result.fold(
                     onSuccess = { replies ->
                         lastReplies = replies
@@ -490,12 +525,19 @@ class AiKeyboardService : InputMethodService() {
                             suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
                         }
                         showReplies(replies, read.mood, read.trap)
+                        if (::tipView.isInitialized && tipView.visibility == View.VISIBLE) {
+                            tipView.append("   ·  ⚡ ${genSeconds()}")
+                        }
                     },
                     onFailure = {
                         lastReplies = emptyList()
                         if (::suggestionButtons.isInitialized) {
                             val offline = OfflineFallback.suggest(tone, read.mood, Prefs.bilingual(this))
                             suggestionButtons.forEachIndexed { i, b -> b.text = offline.getOrElse(i) { "—" } }
+                            if (::generateBtn.isInitialized) {
+                                generateBtn.visibility = View.VISIBLE
+                                generateBtn.text = "✦  Retry"
+                            }
                         }
                         Toast.makeText(
                             this,
@@ -506,6 +548,7 @@ class AiKeyboardService : InputMethodService() {
                 )
             }
         }
+        startGenTimer()
         read.trap?.let { trap ->
             Toast.makeText(this, "⚠️ $trap: ${read.trapAdvice}", Toast.LENGTH_LONG).show()
         }
