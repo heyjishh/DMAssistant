@@ -15,14 +15,12 @@ class AdviceKBTest {
     }
 
     @Test
-    fun `dry mood tips come from the dont-chase pool`() {
+    fun `dry mood tips come from dont-chase or mindset pools`() {
+        val ok = listOf("chas", "Abundance", "exit", "24h", "needy", "responsive",
+            "neediness", "Manson", "peak", "invites", "Rejection", "Honesty")
         repeat(20) {
             val tip = AdviceKB.tip("low_dry", null)
-            assertTrue(
-                "unexpected tip: [$tip]",
-                tip.contains("chas") || tip.contains("Abundance") || tip.contains("exit") ||
-                    tip.contains("24h") || tip.contains("needy")
-            )
+            assertTrue("unexpected tip: [$tip]", ok.any { tip.contains(it) })
         }
     }
 
@@ -40,6 +38,6 @@ class AdviceKBTest {
             .get(null) as Map<*, *>
         assertTrue((all["opener"] as List<*>).any { it.toString().contains("20 words") })
         assertTrue((all["followup"] as List<*>).any { it.toString().contains("facts") || it.toString().contains("Feelings") || it.toString().contains("feelings") })
-        assertEquals(9, all.size)
+        assertEquals(10, all.size)
     }
 }

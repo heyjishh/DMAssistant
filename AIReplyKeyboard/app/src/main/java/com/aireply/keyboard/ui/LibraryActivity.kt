@@ -23,14 +23,18 @@ class LibraryActivity : Activity() {
 
         spinner.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item,
-            LibraryData.categories.map { it.label }
+            (LibraryData.categories + com.aireply.keyboard.ai.Playbook.asCategories()).map { it.label }
         )
         spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            private fun categories() =
+                LibraryData.categories + com.aireply.keyboard.ai.Playbook.asCategories()
+
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, pos: Int, id: Long) {
+                val cat = categories().getOrNull(pos) ?: return@onItemSelected
                 list.adapter = ArrayAdapter(
                     this@LibraryActivity,
                     android.R.layout.simple_list_item_1,
-                    LibraryData.categories[pos].items
+                    cat.items
                 )
             }
 
@@ -38,7 +42,8 @@ class LibraryActivity : Activity() {
         }
 
         list.setOnItemClickListener { _, _, pos, _ ->
-            val line = LibraryData.categories[spinner.selectedItemPosition].items[pos]
+            val all = LibraryData.categories + com.aireply.keyboard.ai.Playbook.asCategories()
+            val line = all.getOrNull(spinner.selectedItemPosition)?.items?.getOrNull(pos) ?: return@setOnItemClickListener
             val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("AI Reply", line))
             Toast.makeText(this, "Copied — paste it in any chat", Toast.LENGTH_SHORT).show()

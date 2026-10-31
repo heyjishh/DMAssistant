@@ -33,6 +33,22 @@ class ToneAndLibraryTest {
     }
 
     @Test
+    fun `playbook provides research-backed sections`() {
+        val cats = com.aireply.keyboard.ai.Playbook.asCategories()
+        assertEquals(6, cats.size)
+        assertTrue(cats.all { it.label.startsWith("📚") })
+        assertTrue(cats.all { it.items.size >= 3 })
+        assertTrue(cats.all { c -> c.items.all { it.contains("Why it works:") } })
+        // spot-check the research claims are attributed
+        val allText = cats.joinToString("") { it.items.joinToString("") }
+        assertTrue(allText.contains("Dutton & Aron"))
+        assertTrue(allText.contains("Aron et al. (1997)"))
+        assertTrue(allText.contains("Klin (2016)"))
+        assertTrue(allText.contains("Manson"))
+        assertTrue(allText.contains("Attached"))
+    }
+
+    @Test
     fun `provider presets cover main options`() {
         assertEquals(5, ProviderPresets.all.size)
         val web2api = ProviderPresets.all.first { it.label.contains("web2api") }

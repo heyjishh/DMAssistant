@@ -13,7 +13,9 @@ object AdviceKB {
             "Specific beats generic: 'that chai reel? obsessed' > 'hey beautiful'",
             "Open-ended hooks only: questions that need more than yes/no",
             "Keep it under 20 words — punchy and direct",
-            "Tease lightly, don't impress — curiosity beats try-hard"
+            "Tease lightly, don't impress — curiosity beats try-hard",
+            "Reference her world: her bio, her pet, her last post (Carnegie rule)",
+            "Drop the period in texts — it reads less sincere (Klin, 2016)"
         ),
         "high_enthu" to listOf(
             "She's excited — match the energy, add 1 emoji max",
@@ -27,14 +29,25 @@ object AdviceKB {
             "Abundance mindset: don't double-text the same day",
             "Shift topic lightly or exit gracefully: 'nice chatting — enjoy your day'",
             "Never send 'why no reply' — it reads as needy",
-            "Wait 24h before trying again; send something worth answering"
+            "Wait 24h before trying again; send something worth answering",
+            "Be responsive, not instant — no timed games (Spielmann, 2016)"
         ),
         "followup" to listOf(
             "Mirror her keyword: repeat her word and expand the question",
             "Facts → feelings: 'I like hiking' deserves 'what do you love about it?'",
             "One question per message — never stack three",
             "After 2-3 exchanges, move to a plan: specific day, specific place",
-            "'Really? tell me more' works better than changing the subject"
+            "'Really? tell me more' works better than changing the subject",
+            "Escalate slowly: facts → opinions → feelings (Aron's 36-questions method)",
+            "Suggest an exciting date — arousal amplifies attraction (Dutton & Aron, 1974)"
+        ),
+        "mindset" to listOf(
+            "Attraction is inversely proportional to neediness (Manson, 'Models')",
+            "Honesty with zero expectation reads as pure confidence",
+            "Concrete invites win: 'Saturday 7pm, that ramen place' > 'we should hang out'",
+            "Leave the date at its peak — peak-end rule (Kahneman)",
+            "Confirm the morning of: reliable, not needy",
+            "Rejection is data — find YOUR pattern before blaming hers"
         ),
         "compliment" to listOf(
             "Praise taste, humor, energy — never looks or body early on",
@@ -70,8 +83,8 @@ object AdviceKB {
         trap?.let { t -> tips[t]?.let { pool -> return pool.random() } }
         return when (mood) {
             "high_enthu" -> (tips["high_enthu"]!! + tips["followup"]!!).random()
-            "low_dry" -> tips["low_dry"]!!.random()
-            else -> (tips["followup"]!! + tips["compliment"]!! + tips["opener"]!!).random()
+            "low_dry" -> (tips["low_dry"]!! + tips["mindset"]!!).random()
+            else -> (tips["followup"]!! + tips["compliment"]!! + tips["opener"]!! + tips["mindset"]!!).random()
         }
     }
 }
