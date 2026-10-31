@@ -35,7 +35,7 @@ class ToneAndLibraryTest {
     @Test
     fun `playbook provides research-backed sections`() {
         val cats = com.aireply.keyboard.ai.Playbook.asCategories()
-        assertEquals(6, cats.size)
+        assertEquals(7, cats.size)
         assertTrue(cats.all { it.label.startsWith("📚") })
         assertTrue(cats.all { it.items.size >= 3 })
         assertTrue(cats.all { c -> c.items.all { it.contains("Why it works:") } })

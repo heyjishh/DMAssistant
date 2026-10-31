@@ -7,6 +7,27 @@ object LibraryData {
 
     val categories: List<Category> = listOf(
         Category(
+            "Desi Hooks 🇮🇳",
+            listOf(
+                "Quick — chai or coffee? Wrong answers get blocked ☕",
+                "Confirm or deny: momos are overrated and you know it",
+                "Your team lost yesterday. Are you okay or do you need space? 🏏",
+                "Rate my taste in music 1-10, but know that 7+ means marriage",
+                "Opinion needed urgently: pani puri — one at a time or stuff the whole thing in?",
+                "Your bio says foodie. Name the best street food in your city. This is a test",
+                "On a scale of 'sharma ji ka beta' to 'log kya kahenge', how desi is your family?",
+                "Festive season check: how many mithai boxes have you personally finished? 🪔",
+                "I saw your story. No question, just wanted to be on your close friends list",
+                "Settle a debate: SRK era or Ranbir era? Choose wisely",
+                "Biggest ick: people who don't reply, or people who reply 'k'?",
+                "You seem like the type who has strong opinions about wedding seasons",
+                "What's your red flag? Mine is starting conversations with surveys",
+                "Last reel you laughed at — send it. I need to judge your humour",
+                "Honest opinion: Delhi winters or Mumbai rains? This decides everything",
+                "If our first date is chai at a tapri, is that romantic or a red flag?"
+            )
+        ),
+        Category(
             "Pickup Lines",
             listOf(
                 "Are you a parking ticket? Because you've got fine written all over you.",

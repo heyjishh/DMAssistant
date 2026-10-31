@@ -138,6 +138,53 @@ object Playbook {
                 "Peak-end rule (Kahneman): memories are judged by the peak and the ending."
             )
         ),
+        "India Game 🇮🇳" to listOf(
+            Entry(
+                "Personalize or get ignored",
+                "Open with a specific detail from her bio or photos — never a bare 'hey' or 'you look beautiful'.",
+                "Indian women on dating subs consistently say generic openers get ignored; specificity is the filter."
+            ),
+            Entry(
+                "Kill the interview questions",
+                "Avoid 'favorite books/movies?' — the most overused opener on Indian apps. Use opinion-bait instead.",
+                "Indian dating subs call it tired; 'confirm or deny' and 'unpopular opinion' style hooks get replies."
+            ),
+            Entry(
+                "Food is the universal hook",
+                "Chai vs coffee, momos takes, best street food in her city — playful food debates are low-risk and endless.",
+                "Chai + food culture is a natural shared topic; food debates give her an easy, fun way to reply."
+            ),
+            Entry(
+                "Cricket and IPL banter",
+                "Light team rivalry or match reactions — 'your team lost yesterday, need space?'",
+                "Cricket is shared cultural ground; banter about it reads playful, not creepy."
+            ),
+            Entry(
+                "Festivals are free re-entry hooks",
+                "Diwali, Holi, New Year — a warm festival text restarts dead chats naturally.",
+                "Culturally expected and welcome; low-pressure way to reconnect after silence."
+            ),
+            Entry(
+                "Don't rush Instagram/number",
+                "Earn the handle: build rapport first. Asking in the first 3 messages kills trust.",
+                "Indian dating-safety reports show harassment is the #1 complaint — patience reads as safe, and safe gets replies."
+            ),
+            Entry(
+                "She may not text first — that's cultural",
+                "If she matched but doesn't initiate, carry the conversation warmly. Silence isn't rejection.",
+                "Indian women often hesitate to initiate due to cultural norms — low-effort from her side ≠ disinterest."
+            ),
+            Entry(
+                "Shaadi humor, lightly",
+                "Playful jabs at wedding season and 'log kya kahenge' land well AFTER rapport — never as the opener.",
+                "Shared desi experience = instant inside joke, but only once comfort exists."
+            ),
+            Entry(
+                "Safety first, always",
+                "No sexual comments early, no pressure to meet or share info. Respect is the filter she's screening with.",
+                "Studies (Rajan, 2025) show Indian women's top app concern is harassment — respectful guys stand out immediately."
+            )
+        ),
         "Mindset" to listOf(
             Entry(
                 "Abundance is action",

@@ -15,7 +15,10 @@ object AdviceKB {
             "Keep it under 20 words — punchy and direct",
             "Tease lightly, don't impress — curiosity beats try-hard",
             "Reference her world: her bio, her pet, her last post (Carnegie rule)",
-            "Drop the period in texts — it reads less sincere (Klin, 2016)"
+            "Drop the period in texts — it reads less sincere (Klin, 2016)",
+            "Desi opener: 'quick, chai or coffee — wrong answers get blocked' 😄",
+            "India: opinion-bait wins — 'confirm or deny: momos are overrated'",
+            "Never a bare 'hey' — Indian apps ignore generic openers"
         ),
         "high_enthu" to listOf(
             "She's excited — match the energy, add 1 emoji max",
