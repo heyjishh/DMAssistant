@@ -382,12 +382,10 @@ class AiKeyboardService : InputMethodService() {
     }
 
     private fun generateReplies() {
+        // Always refresh the snapshot from the current windows before generating,
+        // so newly received messages are included.
+        com.aireply.keyboard.reader.ChatReaderService.instance?.captureNow()
         var snapshot = ChatStore.latestText
-        // ✦ pressed but nothing captured yet? Try an on-demand read of the chat window.
-        if (snapshot.isEmpty()) {
-            com.aireply.keyboard.reader.ChatReaderService.instance?.captureNow()
-            snapshot = ChatStore.latestText
-        }
         val image = ChatStore.latestImage
             ?.takeIf { System.currentTimeMillis() - ChatStore.latestImageAt < 120_000 }
         if (snapshot.isEmpty() && image == null) {

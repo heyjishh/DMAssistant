@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug-only manifest: the adb test hook exists solely in debug builds. -->
+<!-- Debug-only manifest: adb test hook + chat simulator exist solely in debug builds. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <receiver
@@ -9,5 +9,11 @@
                 <action android:name="com.aireply.keyboard.TEST" />
             </intent-filter>
         </receiver>
+
+        <activity
+            android:name=".debug.ChatSimActivity"
+            android:exported="true"
+            android:label="ChatSim"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

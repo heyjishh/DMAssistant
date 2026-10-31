@@ -83,8 +83,13 @@ class ChatReaderService : AccessibilityService() {
             if (node != null) return@forEach
             val root = w.root ?: return@forEach
             val wpkg = root.packageName?.toString() ?: return@forEach
-            if (wpkg == applicationContext.packageName || wpkg == "com.android.systemui") return@forEach
-            if (excluded.any { it.equals(wpkg, ignoreCase = true) }) return@forEach
+            val isSelf = wpkg == applicationContext.packageName
+            // Our own windows are off-limits EXCEPT the debug ChatSimulator
+            // (title "ChatSim"), which exists to demo the pipeline.
+            val isSim = isSelf && w.title?.toString()?.contains("ChatSim") == true
+            if (isSelf && !isSim) return@forEach
+            if (!isSelf && wpkg == "com.android.systemui") return@forEach
+            if (excluded.any { it.equals(wpkg, ignoreCase = true) } && !isSim) return@forEach
             node = root
             nodePkg = wpkg
         }
