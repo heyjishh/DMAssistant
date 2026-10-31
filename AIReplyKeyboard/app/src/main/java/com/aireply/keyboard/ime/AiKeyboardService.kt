@@ -685,7 +685,7 @@ class AiKeyboardService : InputMethodService() {
             if (label == "AI Reply") {
                 setOnLongClickListener { v ->
                     v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                    showInputMethodPicker()
+                    this@AiKeyboardService.showInputMethodPicker()
                     true
                 }
             }
