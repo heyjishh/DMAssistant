@@ -207,8 +207,7 @@ class AiKeyboardService : InputMethodService() {
         controls.addView(toneBtn)
         val tools = listOf(
             "📸" to { startLiveCapture() },
-            "✎" to { rewriteDraft() },
-            "🌐" to { switchToNextInputMethod(false) }
+            "✎" to { rewriteDraft() }
         )
         tools.forEach { (icon, action) ->
             controls.addView(Button(this).apply {
@@ -682,6 +681,14 @@ class AiKeyboardService : InputMethodService() {
             setTextColor(if (accent) ON_ACCENT else TEXT_DIM)
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), weight).apply { setMargins(px(2), px(2), px(2), px(2)) }
+            // Long-press the spacebar (Gboard behavior) to switch keyboards.
+            if (label == "AI Reply") {
+                setOnLongClickListener { v ->
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    showInputMethodPicker()
+                    true
+                }
+            }
             setOnClickListener { v ->
                 v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                 action()
