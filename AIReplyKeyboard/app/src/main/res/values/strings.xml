@@ -14,6 +14,7 @@
     <string name="hint_style_profile">Describe how you text: short messages, emojis, no caps, pet phrases…</string>
     <string name="btn_delhi_preset">Load Delhi Gen-Z (Hinglish) style preset</string>
     <string name="label_bilingual">Hinglish mode — generate replies in Hinglish</string>
+    <string name="label_theme">Keyboard theme</string>
     <string name="label_kb_size">Keyboard height (applies when keyboard reopens)</string>
     <string name="label_excluded_apps">Never read these apps (privacy)</string>
     <string name="hint_excluded_apps">Comma-separated package names, e.g. com.mybank.app, com.android.chrome</string>

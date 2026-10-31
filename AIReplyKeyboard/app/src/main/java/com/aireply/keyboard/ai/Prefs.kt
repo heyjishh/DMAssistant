@@ -50,6 +50,13 @@ object Prefs {
         sp(context).edit().putInt("kb_scale_idx", index).apply()
     }
 
+    /** Keyboard color theme index into KeyboardThemes.all. */
+    fun themeIndex(context: Context): Int = sp(context).getInt("theme_idx", 0)
+
+    fun setThemeIndex(context: Context, index: Int) {
+        sp(context).edit().putInt("theme_idx", index).apply()
+    }
+
     /** Remembers the last tone used per chat app, so each conversation keeps its vibe. */
     fun toneForApp(context: Context, packageName: String): Tone? {
         val raw = sp(context).getString("tone_map", "{}")!!

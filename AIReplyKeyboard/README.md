@@ -122,20 +122,6 @@ For anything serious, the official Gemini/OpenAI presets are the reliable path.
 - **Mock LLM**: a tiny OpenAI-compatible mock (mirrors the gemini-web2api contract,
   including `image_url` parts) lets you test the full pipeline without any API key.
 
-
-### Xiaomi / Redmi (HyperOS) extras
-
-HyperOS adds its own restrictions on top of Android's:
-
-- **Install via USB**: Developer options → enable "Install via USB" (requires Mi account
-  sign-in and often a SIM card). With USB debugging on, `adb install -r app-release.apk`
-  bypasses both Play Protect and the "Restricted setting" flag.
-- **Restricted setting unlock**: Settings → Apps → Manage apps → AI Reply → ⋮ (top right)
-  → *Allow restricted settings*.
-- **Keep the accessibility reader alive** (HyperOS kills background apps aggressively):
-  enable **Autostart** for AI Reply in the Security app, set its **Battery saver** to
-  *No restrictions*, and turn off *Remove permissions if app is unused*.
-
 ## Notes & caveats
 
 - The conversation text is sent to whatever API endpoint you configure — use a

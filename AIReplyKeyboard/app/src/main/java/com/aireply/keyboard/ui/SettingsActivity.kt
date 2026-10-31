@@ -82,6 +82,13 @@ class SettingsActivity : Activity() {
         )
         spinnerKbSize.setSelection(Prefs.kbScaleIndex(this))
 
+        val spinnerTheme = findViewById<Spinner>(R.id.spinnerTheme)
+        val themes = com.aireply.keyboard.ime.theme.KeyboardThemes.all
+        spinnerTheme.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, themes.map { it.label }
+        )
+        spinnerTheme.setSelection(Prefs.themeIndex(this).coerceIn(0, themes.lastIndex))
+
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             val tone = Tone.entries[spinnerTone.selectedItemPosition]
             Prefs.save(
@@ -102,6 +109,7 @@ class SettingsActivity : Activity() {
                 excludedApps = etExcludedApps.text.toString()
             )
             Prefs.setKbScaleIndex(this, spinnerKbSize.selectedItemPosition)
+            Prefs.setThemeIndex(this, spinnerTheme.selectedItemPosition)
             Toast.makeText(this, R.string.toast_saved, Toast.LENGTH_SHORT).show()
         }
     }

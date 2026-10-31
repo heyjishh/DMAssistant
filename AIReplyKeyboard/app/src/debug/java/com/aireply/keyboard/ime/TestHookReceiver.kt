@@ -27,6 +27,10 @@ class TestHookReceiver : BroadcastReceiver() {
             }
             "generate" -> service.debugGenerate()
             "capture" -> service.debugCapture()
+            "theme" -> {
+                Prefs.setThemeIndex(context, intent.getIntExtra("idx", 0))
+                service.rebuildWithTheme()
+            }
             "insert" -> service.debugInsert(intent.getIntExtra("index", 0))
         }
     }

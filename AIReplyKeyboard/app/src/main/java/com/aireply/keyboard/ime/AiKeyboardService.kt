@@ -36,6 +36,7 @@ class AiKeyboardService : InputMethodService() {
 
     private var lastSnapshot: String = ""
     private var lastReplies: List<String> = emptyList()
+    private var builtConfig = -1 // theme idx * 10 + kb scale idx, to detect settings changes
 
     private val emojiRows = listOf(
         listOf("😀", "😂", "🥲", "😍", "😘", "😜", "🤔", "😏", "😎", "🥳", "😇"),
@@ -44,15 +45,29 @@ class AiKeyboardService : InputMethodService() {
         listOf("✨", "🎉", "🌹", "☕", "🍕", "🎮", "⚽", "🎧", "📸", "💀", "🤡")
     )
 
-    // ── Gboard dark theme ────────────────────────────────────────────────────
-    private val KB_BG = 0xFF202124.toInt()
-    private val KEY_BG = 0xFF3C4043.toInt()
-    private val SPECIAL_BG = 0xFF2E3134.toInt()
-    private val CHIP_STROKE = 0xFF5F6368.toInt()
-    private val TEXT = 0xFFE8EAED.toInt()
-    private val TEXT_DIM = 0xFF9AA0A6.toInt()
-    private val ACCENT_BLUE = 0xFF8AB4F8.toInt()
-    private val ON_ACCENT = 0xFF202124.toInt()
+    // ── Theme (applied from KeyboardThemes in onCreate) ─────────────────────
+    private var KB_BG = 0xFF202124.toInt()
+    private var KEY_BG = 0xFF3C4043.toInt()
+    private var SPECIAL_BG = 0xFF2E3134.toInt()
+    private var CHIP_STROKE = 0xFF5F6368.toInt()
+    private var TEXT = 0xFFE8EAED.toInt()
+    private var TEXT_DIM = 0xFF9AA0A6.toInt()
+    private var ACCENT_BLUE = 0xFF8AB4F8.toInt()
+    private var ON_ACCENT = 0xFF202124.toInt()
+
+    private fun applyTheme() {
+        val t = com.aireply.keyboard.ime.theme.KeyboardThemes.all[
+            Prefs.themeIndex(this).coerceIn(0, com.aireply.keyboard.ime.theme.KeyboardThemes.all.lastIndex)
+        ]
+        KB_BG = t.kbBg
+        KEY_BG = t.keyBg
+        SPECIAL_BG = t.functionalBg
+        TEXT = t.text
+        TEXT_DIM = t.textDim
+        ACCENT_BLUE = t.accent
+        ON_ACCENT = t.onAccent
+        CHIP_STROKE = t.chipStroke
+    }
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
 
@@ -127,6 +142,7 @@ class AiKeyboardService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        applyTheme()
         tone = Prefs.defaultTone(this)
     }
 
@@ -140,6 +156,11 @@ class AiKeyboardService : InputMethodService() {
     fun debugGenerate() = generateReplies()
 
     fun debugCapture() = startLiveCapture()
+
+    fun rebuildWithTheme() {
+        applyTheme()
+        if (::suggestionButtons.isInitialized) setInputView(onCreateInputView())
+    }
 
     fun debugInsert(index: Int) {
         val text = lastReplies.getOrElse(index) { return }
@@ -155,6 +176,7 @@ class AiKeyboardService : InputMethodService() {
             setBackgroundColor(KB_BG)
             setPadding(px(4), px(6), px(4), px(8))
         }
+        builtConfig = Prefs.themeIndex(this) * 10 + Prefs.kbScaleIndex(this)
 
         // --- Suggestion row: Gboard-style plain text, middle suggestion emphasized ---
         val suggestionRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -382,12 +404,16 @@ class AiKeyboardService : InputMethodService() {
                 result.fold(
                     onSuccess = { replies ->
                         lastReplies = replies
-                        suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
+                        if (::suggestionButtons.isInitialized) {
+                            suggestionButtons.forEachIndexed { i, b -> b.text = replies.getOrElse(i) { "—" } }
+                        }
                     },
                     onFailure = {
                         lastReplies = emptyList()
-                        val offline = OfflineFallback.suggest(tone, read.mood, Prefs.bilingual(this))
-                        suggestionButtons.forEachIndexed { i, b -> b.text = offline.getOrElse(i) { "—" } }
+                        if (::suggestionButtons.isInitialized) {
+                            val offline = OfflineFallback.suggest(tone, read.mood, Prefs.bilingual(this))
+                            suggestionButtons.forEachIndexed { i, b -> b.text = offline.getOrElse(i) { "—" } }
+                        }
                         Toast.makeText(
                             this,
                             "Offline suggestions — API unreachable. Check settings/connection.",
@@ -464,7 +490,8 @@ class AiKeyboardService : InputMethodService() {
             rebuildKeys(px)
         })
         bottom.addView(makeCharKey(',', px, weight = 1f))
-        bottom.addView(makeSpecialKey("space", px, weight = 4f) {
+        // Space bar carries the keyboard branding, Gboard-style.
+        bottom.addView(makeSpecialKey("AI Reply", px, weight = 4f) {
             currentInputConnection?.commitText(" ", 1)
         })
         bottom.addView(makeCharKey('.', px, weight = 1f))
@@ -488,6 +515,7 @@ class AiKeyboardService : InputMethodService() {
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), weight).apply { setMargins(px(2), px(2), px(2), px(2)) }
             setOnClickListener {
+                performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                 currentInputConnection?.commitText(label, 1)
                 if (shiftOn && !symbolsOn) {
                     shiftOn = false
@@ -515,7 +543,10 @@ class AiKeyboardService : InputMethodService() {
             background = keyBackground(KEY_BG)
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), 1f).apply { setMargins(px(2), px(2), px(2), px(2)) }
-            setOnClickListener { currentInputConnection?.commitText(emoji, 1) }
+            setOnClickListener { v ->
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                currentInputConnection?.commitText(emoji, 1)
+            }
         }
     }
 
@@ -567,7 +598,10 @@ class AiKeyboardService : InputMethodService() {
             setTextColor(if (accent) ON_ACCENT else TEXT_DIM)
             stateListAnimator = null
             layoutParams = LinearLayout.LayoutParams(0, px(44), weight).apply { setMargins(px(2), px(2), px(2), px(2)) }
-            setOnClickListener { action() }
+            setOnClickListener { v ->
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                action()
+            }
         }
     }
 
@@ -588,6 +622,13 @@ class AiKeyboardService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        // Rebuild the view if the user changed theme or keyboard height in settings.
+        val cfg = Prefs.themeIndex(this) * 10 + Prefs.kbScaleIndex(this)
+        if (cfg != builtConfig) {
+            applyTheme()
+            setInputView(onCreateInputView())
+            builtConfig = cfg
+        }
         // Restore the tone remembered for this chat app, if any; keep chosen tone otherwise.
         ChatStore.packageName.takeIf { it.isNotEmpty() }
             ?.let { Prefs.toneForApp(this, it) }
